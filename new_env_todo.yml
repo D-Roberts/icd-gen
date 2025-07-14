@@ -1,0 +1,19 @@
+# TODO make requirement file or environment file
+
+# using miniforge and conda channels
+# run conda config --add channels conda-forge
+# run conda config --set channel_priority strict 
+
+
+
+# to make work on Mac M1
+
+# in conda env summer25 with python3.12
+
+# torch from https://pytorch.org/get-started/locally/
+
+# and now the mps device is seen
+
+conda install scikit-learn
+conda install munch
+conda install -c conda-forge py-xgboost
