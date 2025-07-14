@@ -1,4 +1,3 @@
 """
-summer25
-This isa placeholder for the code of this summer's paper.
+in context, denoise, energy, dam, generative, superintelligence - a step.
 """
