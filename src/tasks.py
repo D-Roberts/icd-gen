@@ -31,8 +31,7 @@ class Task:
         self.b_size = batch_size
         self.pool_dict = pool_dict
         self.seeds = seeds
-        
-        # assert pool_dict is None or seeds is None
+        assert pool_dict is None or seeds is None
 
     def evaluate(self, xs):
         raise NotImplementedError
@@ -64,13 +63,10 @@ def get_task_sampler(
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
-        # print("task_cls", task_cls) #Lin reg ok
-
         if num_tasks is not None:
             if pool_dict is not None:
                 raise ValueError("Either pool_dict or num_tasks should be None.")
             pool_dict = task_cls.generate_pool_dict(n_dims, num_tasks, **kwargs)
-            # print("waht is the pool_dict", pool_dict) #print nothing bc num_tasks is None
         return lambda **args: task_cls(n_dims, batch_size, pool_dict, **args, **kwargs)
     else:
         print("Unknown task")
@@ -83,13 +79,8 @@ class LinearRegression(Task):
         super(LinearRegression, self).__init__(n_dims, batch_size, pool_dict, seeds)
         self.scale = scale
 
-        print("pool_dict",pool_dict) #None
-    
-
         if pool_dict is None and seeds is None:
             self.w_b = torch.randn(self.b_size, self.n_dims, 1)
-            # print("am I generating w_b here?", self.w_b.shape) #yes,[64, 20, 1]
-
         elif seeds is not None:
             self.w_b = torch.zeros(self.b_size, self.n_dims, 1)
             generator = torch.Generator()
@@ -116,7 +107,7 @@ class LinearRegression(Task):
         return squared_error
 
     @staticmethod
-    def get_training_metric(): #what fn to use
+    def get_training_metric():
         return mean_squared_error
 
 

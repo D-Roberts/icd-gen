@@ -2,8 +2,6 @@ import os
 from random import randint
 import uuid
 
-#from quinine import QuinineArgumentParser
-# TODO@DR replace with arparse or similar
 import argparse
 
 from tqdm import tqdm
@@ -14,7 +12,7 @@ from eval import get_run_metrics
 from tasks import get_task_sampler
 from samplers import get_data_sampler
 from curriculum import Curriculum
-from schema import schema
+# from schema import schema
 from models import build_model
 
 import wandb
@@ -22,10 +20,21 @@ import wandb
 torch.backends.cudnn.benchmark = True
 
 
-
-AVAIL_GPUS = min(1, torch.cuda.device_count())
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Available GPUs {AVAIL_GPUS} and current device {device}")
+# AVAIL_GPUS = min(1, torch.cuda.device_count())
+if not torch.backends.mps.is_available():
+    print('\nMPS device not found.')
+    mps_device = None
+     
+if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        mps_device = torch.device("mps")
+        x = torch.ones(1, device=device)
+        print('\nCheck M1 chip:', x)
+elif torch.cuda.is_available():
+        device = torch.device("cuda:0")
+else:
+        device = "cpu"
+print('device selected:', device)
 
 
 def train_step(model, xs, ys, optimizer, loss_func):
@@ -45,8 +54,9 @@ def sample_seeds(total_seeds, count):
 
 
 def train(model, args):
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.training.learning_rate)
-    curriculum = Curriculum(args.training.curriculum)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.training["learning_rate"])
+    curriculum = Curriculum(args.training["curriculum"])
+    print("curriculum", curriculum)
 
     starting_step = 0
     state_path = os.path.join(args.out_dir, "state.pt")
@@ -59,24 +69,24 @@ def train(model, args):
             curriculum.update()
 
     n_dims = model.n_dims
-    bsize = args.training.batch_size
-    data_sampler = get_data_sampler(args.training.data, n_dims=n_dims)
+    bsize = args.training["batch_size"]
+    data_sampler = get_data_sampler(args.training["data"], n_dims=n_dims)
     task_sampler = get_task_sampler(
-        args.training.task,
+        args.training["task"],
         n_dims,
         bsize,
-        num_tasks=args.training.num_tasks,
-        **args.training.task_kwargs,
+        num_tasks=args.training["num_tasks"],
+        **args.training["task_kwargs"],
     )
-    pbar = tqdm(range(starting_step, args.training.train_steps))
+    pbar = tqdm(range(starting_step, args.training["train_steps"]))
 
-    num_training_examples = args.training.num_training_examples
+    num_training_examples = args.training["num_training_examples"]
 
     for i in pbar:
         data_sampler_args = {}
         task_sampler_args = {}
 
-        if "sparse" in args.training.task:
+        if "sparse" in args.training["task"]:
             task_sampler_args["valid_coords"] = curriculum.n_dims_truncated
         if num_training_examples is not None:
             assert num_training_examples >= bsize
@@ -95,11 +105,13 @@ def train(model, args):
 
         loss_func = task.get_training_metric()
 
-        loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        # loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func)
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
-        point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
+        # point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
+        point_wise_loss = point_wise_loss_func(output, ys.to(device)).mean(dim=0)
 
         baseline_loss = (
             sum(
@@ -109,7 +121,7 @@ def train(model, args):
             / curriculum.n_points
         )
 
-        if i % args.wandb.log_every_steps == 0 and not args.test_run:
+        if i % args.wandb["log_every_steps"] == 0 and not args.test_run:
             wandb.log(
                 {
                     "overall_loss": loss,
@@ -126,7 +138,7 @@ def train(model, args):
         curriculum.update()
 
         pbar.set_description(f"loss {loss}")
-        if i % args.training.save_every_steps == 0 and not args.test_run:
+        if i % args.training["save_every_steps"] == 0 and not args.test_run:
             training_state = {
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
@@ -135,8 +147,8 @@ def train(model, args):
             torch.save(training_state, state_path)
 
         if (
-            args.training.keep_every_steps > 0
-            and i % args.training.keep_every_steps == 0
+            args.training["keep_every_steps"] > 0
+            and i % args.training["keep_every_steps"] == 0
             and not args.test_run
             and i > 0
         ):
@@ -145,23 +157,23 @@ def train(model, args):
 
 def main(args):
     if args.test_run:
-        curriculum_args = args.training.curriculum
-        curriculum_args.points.start = curriculum_args.points.end
-        curriculum_args.dims.start = curriculum_args.dims.end
-        args.training.train_steps = 100
+        curriculum_args = args.training["curriculum"]
+        curriculum_args.points["start"] = curriculum_args.points["end"]
+        curriculum_args.dims["start"] = curriculum_args.dims["end"]
+        args.training["train_steps"] = 100
     else:
         wandb.init(
             dir=args.out_dir,
-            project=args.wandb.project,
-            entity=args.wandb.entity,
+            project=args.wandb["project"],
+            entity=args.wandb["entity"],
             config=args.__dict__,
-            notes=args.wandb.notes,
-            name=args.wandb.name,
+            notes=args.wandb["notes"],
+            name=args.wandb["name"],
             resume=True,
         )
 
     model = build_model(args.model)
-    # model.cuda() #TODO@DR make this code optional for CUDA
+    # model.cuda()
     model.to(device)
     model.train()
 
@@ -172,16 +184,28 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # parser = QuinineArgumentParser(schema=schema)
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="My application description.")
     # args = parser.parse_quinfig()
+    parser.add_argument("--config-file", help="Path to YAML config file")
+    parser.add_argument("--model", default="default_value")
+    parser.add_argument("--test_run", default=None)
+
     args = parser.parse_args()
 
-    assert args.model.family in ["gpt2", "lstm"]
+    if args.config_file:
+        with open(args.config_file, 'r') as f:
+            config = yaml.safe_load(f)
+            parser.set_defaults(**config)
+        args = parser.parse_args() # Reload arguments to apply YAML values
+
+
+    assert args.model["family"] in ["gpt2", "lstm"]
     print(f"Running with: {args}")
 
+    # args.test_run = None #test_run is not in the argparse Names
+
     if not args.test_run:
-        run_id = args.training.resume_id
+        run_id = args.training["resume_id"] #TODO@DR argparse name space has one level of keys mapped to dicts
         if run_id is None:
             run_id = str(uuid.uuid4())
 

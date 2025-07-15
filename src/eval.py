@@ -13,7 +13,6 @@ import models
 from samplers import get_data_sampler, sample_transformation
 from tasks import get_task_sampler
 
-# AVAIL_GPUS = min(1, torch.cuda.device_count())
 if not torch.backends.mps.is_available():
     print('\nMPS device not found.')
     mps_device = None
@@ -29,10 +28,6 @@ else:
         device = "cpu"
 print('device selected:', device)
 
-#device = "cuda" if torch.cuda.is_available() else "cpu"
-# print(f"Available GPUs {AVAIL_GPUS} and current device {device}")
-
-
 def get_model_from_run(run_path, step=-1, only_conf=False):
     config_path = os.path.join(run_path, "config.yaml")
     with open(config_path) as fp:  # we don't Quinfig it to avoid inherits
@@ -41,14 +36,31 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
         return None, conf
 
     model = models.build_model(conf.model)
+    print("in eval conf.model is", conf.model)
+    # print("model in eval right after build_model expects key names:\n")
+    # for name, param in model.named_parameters():
+    #         print(f"Name: {name}, Shape: {param.shape}")
 
-    if step == -1:
+
+    if step == -1: #this is chosen for the eval notebook
         state_path = os.path.join(run_path, "state.pt")
-        state = torch.load(state_path, map_location=device)
-        model.load_state_dict(state["model_state_dict"])
+        print("what is state path", state_path)
+        state = torch.load(state_path, map_location=torch.device('cpu'), weights_only=True)
+        # print("what is the state dict keys", state.keys())
+        # print("what are the model_state_dict keys loaded from path", state["model_state_dict"].keys())
+        # make a new state_dict to remove the not found keys
+        new_state_dict = dict()
+        not_found_keys_in_model = {"_backbone.h.0.attn.bias", "_backbone.h.0.attn.masked_bias", "_backbone.h.1.attn.bias", "_backbone.h.1.attn.masked_bias", "_backbone.h.2.attn.bias", "_backbone.h.2.attn.masked_bias", "_backbone.h.3.attn.bias", "_backbone.h.3.attn.masked_bias", "_backbone.h.4.attn.bias", "_backbone.h.4.attn.masked_bias", "_backbone.h.5.attn.bias", "_backbone.h.5.attn.masked_bias", "_backbone.h.6.attn.bias", "_backbone.h.6.attn.masked_bias", "_backbone.h.7.attn.bias", "_backbone.h.7.attn.masked_bias", "_backbone.h.8.attn.bias", "_backbone.h.8.attn.masked_bias", "_backbone.h.9.attn.bias", "_backbone.h.9.attn.masked_bias", "_backbone.h.10.attn.bias", "_backbone.h.10.attn.masked_bias", "_backbone.h.11.attn.bias", "_backbone.h.11.attn.masked_bias"}
+        for k in state["model_state_dict"].keys():
+            if k in not_found_keys_in_model:
+                continue
+            new_state_dict[k] = state["model_state_dict"][k]
+        # print("new formed dict", new_state_dict)
+        # model.load_state_dict(state["model_state_dict"])
+        model.load_state_dict(new_state_dict)
     else:
         model_path = os.path.join(run_path, f"model_{step}.pt")
-        state_dict = torch.load(model_path, map_location=device)
+        state_dict = torch.load(model_path, map_location=torch.device('cpu'), weights_only=True)
         model.load_state_dict(state_dict)
 
     return model, conf
@@ -59,7 +71,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 
 def eval_batch(model, task_sampler, xs, xs_p=None):
     task = task_sampler()
-    # if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
+    # if  model.name.split("_")[0] in ["gpt2", "lstm"]:
     #     device = "cuda"
     # else:
     #     device = "cpu"
@@ -209,12 +221,12 @@ def eval_model(
 
 
 def build_evals(conf):
-    n_dims = conf.model.n_dims
-    n_points = conf.training.curriculum.points.end
-    batch_size = conf.training.batch_size
+    n_dims = conf.model["n_dims"]
+    n_points = conf.training["curriculum"]["points"]["end"]
+    batch_size = conf.training["batch_size"]
 
-    task_name = conf.training.task
-    data_name = conf.training.data
+    task_name = conf.training["task"]
+    data_name = conf.training["data"]
 
     base_kwargs = {
         "task_name": task_name,
@@ -314,6 +326,7 @@ def get_run_metrics(
         all_models = []
     else:
         model, conf = get_model_from_run(run_path, step)
+        # model = model.cuda().eval()
         model = model.to(device).eval()
         all_models = [model]
         if not skip_baselines:
@@ -340,14 +353,15 @@ def get_run_metrics(
 
 
 def conf_to_model_name(conf):
-    if conf.model.family == "gpt2":
+    print("what is conf ", conf)
+    if conf.model["family"] == "gpt2":
         return {
             (3, 2): "Transformer-xs",
             (6, 4): "Transformer-small",
             (12, 8): "Transformer",
-        }[(conf.model.n_layer, conf.model.n_head)]
+        }[(conf.model["n_layer"], conf.model["n_head"])]
     else:
-        return conf.wandb.name
+        return conf.wandb["name"]
 
 
 def baseline_names(name):
@@ -371,6 +385,7 @@ def baseline_names(name):
 
 
 def read_run_dir(run_dir):
+    print("what is run dir", run_dir)
     all_runs = {}
     for task in os.listdir(run_dir):
         task_dir = os.path.join(run_dir, task)
@@ -382,22 +397,22 @@ def read_run_dir(run_dir):
             params["task"] = task
             params["model"] = conf_to_model_name(conf)
             params["kwargs"] = "_".join(
-                f"{k}={v}" for k, v in conf.training.task_kwargs.items()
+                f"{k}={v}" for k, v in conf.training["task_kwargs"].items()
             )
             num_tasks = (
-                conf.training.num_tasks if "num_tasks" in conf.training else None
+                conf.training["num_tasks"] if "num_tasks" in conf.training else None
             )
             params["num_tasks"] = num_tasks if num_tasks is not None else -1
             num_examples = (
-                conf.training.num_training_examples
+                conf.training["num_training_examples"]
                 if "num_training_examples" in conf.training
                 else None
             )
             params["num_examples"] = num_examples if num_examples is not None else -1
-            params["n_dims"] = conf.model.n_dims
-            params["n_layer"] = conf.model.n_layer
-            params["n_head"] = conf.model.n_head
-            params["run_name"] = conf.wandb.name
+            params["n_dims"] = conf.model["n_dims"]
+            params["n_layer"] = conf.model["n_layer"]
+            params["n_head"] = conf.model["n_head"]
+            params["run_name"] = conf.wandb["name"]
 
             for k, v in params.items():
                 if k not in all_runs:

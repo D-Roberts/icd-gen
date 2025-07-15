@@ -11,28 +11,31 @@ import xgboost as xgb
 from base_models import NeuralNetwork, ParallelNetworks
 
 
-def build_model_toy():
-    
-    model = TransformerModel(
-            n_dims=20,
-            n_positions=41, #the n_positions for model args in base is 101
-            n_embd=64,
-            n_layer=2, # I made it really small
-            n_head=1,
-    )
-    
-
-    return model
+# AVAIL_GPUS = min(1, torch.cuda.device_count())
+if not torch.backends.mps.is_available():
+    print('\nMPS device not found.')
+    mps_device = None
+     
+if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        mps_device = torch.device("mps")
+        x = torch.ones(1, device=device)
+        print('\nCheck M1 chip:', x)
+elif torch.cuda.is_available():
+        device = torch.device("cuda:0")
+else:
+        device = "cpu"
+print('device selected:', device)
 
 
 def build_model(conf):
-    if conf.family == "gpt2":
+    if conf["family"] == "gpt2":
         model = TransformerModel(
-            n_dims=conf.n_dims,
-            n_positions=conf.n_positions,
-            n_embd=conf.n_embd,
-            n_layer=conf.n_layer,
-            n_head=conf.n_head,
+            n_dims=conf["n_dims"],
+            n_positions=conf["n_positions"],
+            n_embd=conf["n_embd"],
+            n_layer=conf["n_layer"],
+            n_head=conf["n_head"],
         )
     else:
         raise NotImplementedError
@@ -94,10 +97,8 @@ def get_relevant_baselines(task_name):
 class TransformerModel(nn.Module):
     def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
         super(TransformerModel, self).__init__()
-
-        # Find a Vit
         configuration = GPT2Config(
-            n_positions=2 * n_positions, #
+            n_positions=2 * n_positions,
             n_embd=n_embd,
             n_layer=n_layer,
             n_head=n_head,
@@ -110,8 +111,14 @@ class TransformerModel(nn.Module):
 
         self.n_positions = n_positions
         self.n_dims = n_dims
-        self._read_in = nn.Linear(n_dims, n_embd) 
+        self._read_in = nn.Linear(n_dims, n_embd)
         self._backbone = GPT2Model(configuration)
+
+        # print("GPT2 decoder model parameters:")
+        # m = self._backbone 
+        # for name, param in m.state_dict().items():
+        #     print(f"Layer: {name}, Shape: {param.shape}")
+
         self._read_out = nn.Linear(n_embd, 1)
 
     @staticmethod
@@ -139,12 +146,6 @@ class TransformerModel(nn.Module):
         zs = self._combine(xs, ys)
         embeds = self._read_in(zs)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
-
-        # print("GPT2 decoder model parameters:")
-        # m = self._backbone 
-        # for name, param in m.state_dict().items():
-        #     print(f"Layer: {name}, Shape: {param.shape}")
-
         prediction = self._read_out(output)
         return prediction[:, ::2, 0][:, inds]  # predict only on xs
 
@@ -344,7 +345,8 @@ class GDModel:
         # prediction made at all indices by default.
         # xs: bsize X npoints X ndim.
         # ys: bsize X npoints.
-        xs, ys = xs.cuda(), ys.cuda()
+        # xs, ys = xs.cuda(), ys.cuda()
+        xs, ys = xs.to(device), ys.to(device)
 
         if inds is None:
             inds = range(ys.shape[1])
@@ -360,7 +362,9 @@ class GDModel:
             model = ParallelNetworks(
                 ys.shape[0], self.model_class, **self.model_class_args
             )
-            model.cuda()
+            # model.cuda()
+            model.to(device)
+            
             if i > 0:
                 pred = torch.zeros_like(ys[:, 0])
 

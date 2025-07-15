@@ -42,7 +42,6 @@ class GaussianSampler(DataSampler):
     def sample_xs(self, n_points, b_size, n_dims_truncated=None, seeds=None):
         if seeds is None:
             xs_b = torch.randn(b_size, n_points, self.n_dims)
-            # print("xs_b shape in sample_xs", xs_b.shape)
         else:
             xs_b = torch.zeros(b_size, n_points, self.n_dims)
             generator = torch.Generator()
