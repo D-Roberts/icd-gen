@@ -19,6 +19,43 @@ import wandb
 
 torch.backends.cudnn.benchmark = True
 
+from data_gen_denoise_toy import DATAGEN_GLOBALS, data_train_test_split_linear
+
+# gen data for linear only, skip vis
+       
+datagen_seed = 0
+idx = 0
+datagen_choice = 0
+context_len = 11 
+dim_n = 5
+test_ratio = 0
+
+#datagen_seed = 15  # None  |  15, 4
+
+###datagen_choice = 1   # {0, 1, 2} -> {linear, clusters, manifold}
+datagen_label = ['linear'][datagen_choice]
+
+sigma2_corruption = 0.1
+
+base_kwargs = dict(
+    context_len=context_len,
+    dim_n=dim_n,
+    num_W_in_dataset=64,
+    context_examples_per_W=1,
+    samples_per_context_example=1,
+    test_ratio=test_ratio,
+    verbose=True,  
+    as_torch=True,  #it was false and numpies outputed
+    savez_fname=None,  
+    seed=datagen_seed,  
+    style_subspace_dimensions=DATAGEN_GLOBALS[datagen_choice]['style_subspace_dimensions'],
+    style_origin_subspace=DATAGEN_GLOBALS[datagen_choice]['style_origin_subspace'],
+    style_corruption_orthog=DATAGEN_GLOBALS[datagen_choice]['style_corruption_orthog'],
+    sigma2_corruption=sigma2_corruption,
+)
+
+#test out training the icl models directly for icl denoise linear task
+
 
 # AVAIL_GPUS = min(1, torch.cuda.device_count())
 if not torch.backends.mps.is_available():
@@ -56,7 +93,7 @@ def sample_seeds(total_seeds, count):
 def train(model, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.training["learning_rate"])
     curriculum = Curriculum(args.training["curriculum"])
-    print("curriculum", curriculum)
+    # print("curriculum", curriculum)
 
     starting_step = 0
     state_path = os.path.join(args.out_dir, "state.pt")
@@ -70,7 +107,7 @@ def train(model, args):
 
     n_dims = model.n_dims
     bsize = args.training["batch_size"]
-    data_sampler = get_data_sampler(args.training["data"], n_dims=n_dims)
+    # data_sampler = get_data_sampler(args.training["data"], n_dims=n_dims)
     task_sampler = get_task_sampler(
         args.training["task"],
         n_dims,
@@ -94,18 +131,28 @@ def train(model, args):
             data_sampler_args["seeds"] = seeds
             task_sampler_args["seeds"] = [s + 1 for s in seeds]
 
-        xs = data_sampler.sample_xs(
-            curriculum.n_points,
-            bsize,
-            curriculum.n_dims_truncated,
-            **data_sampler_args,
-        )
+        # xs = data_sampler.sample_xs(
+        #     curriculum.n_points,
+        #     bsize,
+        #     curriculum.n_dims_truncated,
+        #     **data_sampler_args,
+        # )
         task = task_sampler(**task_sampler_args)
-        ys = task.evaluate(xs)
+        # ys = task.evaluate(xs)
+
+        xs, ys, x_test, y_test, train_data_subspaces, test_data_subspaces = data_train_test_split_linear(
+            **base_kwargs,
+            sigma2_pure_context=DATAGEN_GLOBALS[datagen_choice]['sigma2_pure_context'])
+
 
         loss_func = task.get_training_metric()
 
         # loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        xs = torch.permute(xs, (0,2,1))
+        ys = torch.squeeze(ys, -1)
+        print("xs shape in train", xs.shape)
+        print("ys shape in train", ys.shape)
+
         loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func)
 
         point_wise_tags = list(range(curriculum.n_points))
@@ -202,10 +249,9 @@ if __name__ == "__main__":
     assert args.model["family"] in ["gpt2", "lstm"]
     print(f"Running with: {args}")
 
-    # args.test_run = None #test_run is not in the argparse Names
-
+   
     if not args.test_run:
-        run_id = args.training["resume_id"] #TODO@DR argparse name space has one level of keys mapped to dicts
+        run_id = args.training["resume_id"]
         if run_id is None:
             run_id = str(uuid.uuid4())
 

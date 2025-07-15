@@ -3,7 +3,7 @@ import math
 
 class Curriculum:
     def __init__(self, args):
-        print("args in curric", args)
+        # print("args in curric", args)
         # args.dims and args.points each contain start, end, inc, interval attributes
         # inc denotes the change in n_dims,
         # this change is done every interval,

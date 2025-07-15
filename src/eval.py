@@ -36,7 +36,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
         return None, conf
 
     model = models.build_model(conf.model)
-    print("in eval conf.model is", conf.model)
+    # print("in eval conf.model is", conf.model)
     # print("model in eval right after build_model expects key names:\n")
     # for name, param in model.named_parameters():
     #         print(f"Name: {name}, Shape: {param.shape}")

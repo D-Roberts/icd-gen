@@ -12,7 +12,7 @@ training:
     data: gaussian
     num_training_examples:
     task_kwargs: {}
-    batch_size: 64
+    batch_size: 80
     learning_rate: 0.0001
     save_every_steps: 1000
     keep_every_steps: 100000

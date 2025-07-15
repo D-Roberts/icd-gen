@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 import torch.nn as nn
 from transformers import GPT2Model, GPT2Config
@@ -148,6 +150,147 @@ class TransformerModel(nn.Module):
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
         prediction = self._read_out(output)
         return prediction[:, ::2, 0][:, inds]  # predict only on xs
+
+
+def weight_matrix(dim_in, dim_out, mode="default"):
+    """
+    Can use to initialize weight matrices in nn layers 
+        e.g. self.W_v = weight_matrix(h=ndim, w=ndim, mode="default")
+
+    Throughout, we multiply on the right (e.g. y = W @ x) for consistency with the math notation.
+        Thus, dim_in is the number of columns, and dim_out is the number of rows. (i.e. w, h in PyTorch notation)
+
+    For info on default init from torch method nn.Linear, see here:
+      https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
+    """
+    W_tensor = torch.empty(dim_out, dim_in)
+    if mode == "default":
+        low  = -1.0 / np.sqrt(dim_in)
+        high =  1.0 / np.sqrt(dim_in)
+        torch.nn.init.uniform_(W_tensor, a=low, b=high)
+    elif mode == "kaiming":
+        torch.nn.init.kaiming_uniform_(W_tensor)
+    elif mode == "normal":
+        torch.nn.init.normal_(W_tensor, mean=0, std=0.02)
+    else:
+        raise ValueError("Unsupported `mode`")
+    return torch.nn.Parameter(W_tensor)
+
+class TransformerModelV1(nn.Module):
+    """
+    Simplest model:
+    - no positional encoding is used
+    - `linear self-attention` (no softmax wrapper used)
+
+    Notes
+     - dim_input - the dimension of input tokens
+     - dim_attn  - the dimension of the residual stream (attention head + MLP input and output)
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__()
+        assert n_layer == 1
+        assert n_head == 1
+        assert dim_attn is None
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = context_length                     # scaling used in Bartlett 2023
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        rho = n_tokens
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / rho
+        f_attn = xs + W_PV @ xs @ attn_arg
+
+        out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches
+        return out
+    
+class TransformerModelV3(nn.Module):
+    """
+    2-layer Simplest model:
+    - no positional encoding is used
+    - `linear self-attention` (no softmax wrapper used)
+
+    Notes
+     - dim_input - the dimension of input tokens
+     - dim_attn  - the dimension of the residual stream (attention head + MLP input and output)
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2
+        assert n_head == 1
+        assert dim_attn is None
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = context_length                     # scaling used in Bartlett 2023
+
+        self.W_KQ1 = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV1 = weight_matrix(dim_input, dim_input, mode='default')
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        rho = n_tokens
+
+        W_KQ1 = self.W_KQ1
+        W_PV1 = self.W_PV1
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / rho
+        print("attn arg shape", attn_arg.shape) #([80, 500, 500]) context len
+        f_attn = xs + W_PV @ xs @ attn_arg #add; we would norm here too
+        print("f_attn shape", f_attn.shape)
+
+        # 2-nd layer
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / rho 
+        f_attn1 = f_attn + W_PV1 @ f_attn @ attn_arg1
+
+
+        out = f_attn1[:, :, -1]  # take dim_n output result at last token, for all batches
+        return out
+    
+class TransformerModelV1nores(TransformerModelV1):
+    """
+    See docstring TransformerModelV1
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__(context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        rho = n_tokens
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / rho
+        f_attn = W_PV @ xs @ attn_arg  # the residual stream term "+ xs" has been removed
+
+        out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches
+        return out
 
 
 class NNModel:
