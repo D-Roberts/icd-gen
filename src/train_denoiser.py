@@ -20,14 +20,29 @@ import yaml
 from eval import get_run_metrics
 from tasks import get_task_sampler
 from samplers import get_data_sampler
-from curriculum import Curriculum
-# from schema import schema
-from models import build_model, TransformerModelV1nores, TransformerModelV3
+
+
+from models import build_model, TransformerModelV1nores, TransformerModelV3, TransformerModelV2nores
 
 import wandb
 
 torch.backends.cudnn.benchmark = True
+if not torch.backends.mps.is_available():
+    print('\nMPS device not found.')
+    mps_device = None
+     
+if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        mps_device = torch.device("mps")
+        x = torch.ones(1, device=device)
+        print('\nCheck M1 chip:', x)
+elif torch.cuda.is_available():
+        device = torch.device("cuda:0")
+else:
+        device = "cpu"
+print('device selected:', device)
 
+#from denoise
 def report_dataset_loss(net, criterion, dataloader, data_label, print_val=False, plot_some=False):
     mse_loss_total = 0
     count = 0.0
@@ -522,8 +537,6 @@ def data_train_test_split_linear(
     return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
 
 
-
-# gen data for linear only, skip vis
 class DatasetWrapper(Dataset):
     """
     (relic): currently, there is a "remainder" batch at the end, with size smaller than batch_size -- could discard it
@@ -582,23 +595,10 @@ base_kwargs = dict(
     sigma2_corruption=sigma2_corruption,
 )
 
-# AVAIL_GPUS = min(1, torch.cuda.device_count())
-if not torch.backends.mps.is_available():
-    print('\nMPS device not found.')
-    mps_device = None
-     
-if torch.backends.mps.is_available():
-        device = torch.device("mps")
-        mps_device = torch.device("mps")
-        x = torch.ones(1, device=device)
-        print('\nCheck M1 chip:', x)
-elif torch.cuda.is_available():
-        device = torch.device("cuda:0")
-else:
-        device = "cpu"
-print('device selected:', device)
 
 
+
+# Leave this as is
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
@@ -609,7 +609,7 @@ def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.step()
     return loss.detach().item(), output.detach()
 
-
+#TODO: this is from ICL but not sure if I need it now - how they do seeds in denoise
 def sample_seeds(total_seeds, count):
     seeds = set()
     while len(seeds) < count:
@@ -619,53 +619,20 @@ def sample_seeds(total_seeds, count):
 
 def train(model, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.training["learning_rate"])
-    curriculum = Curriculum(args.training["curriculum"])
-    # print("curriculum", curriculum)
 
-    starting_step = 0
+    #this is from icl
     state_path = os.path.join(args.out_dir, "state.pt")
     if os.path.exists(state_path):
         state = torch.load(state_path)
         model.load_state_dict(state["model_state_dict"])
         optimizer.load_state_dict(state["optimizer_state_dict"])
-        starting_step = state["train_step"]
-        for i in range(state["train_step"] + 1):
-            curriculum.update()
+        
 
-    # n_dims = model.n_dims
-    bsize = args.training["batch_size"]
-    # data_sampler = get_data_sampler(args.training["data"], n_dims=n_dims)
-    # task_sampler = get_task_sampler(
-    #     args.training["task"],
-    #     n_dims,
-    #     bsize,
-    #     num_tasks=args.training["num_tasks"],
-    #     **args.training["task_kwargs"],
-    # )
-    # pbar = tqdm(range(starting_step, args.training["train_steps"]))
+    batch_size = args.training["batch_size"]
+    
+    # pbar = tqdm(range(starting_step, args.training["train_steps"])) TODO: put this back later
 
-    # num_training_examples = args.training["num_training_examples"]
-
-    # for i in pbar:
-    #     data_sampler_args = {}
-    #     task_sampler_args = {}
-
-       
-    #     if num_training_examples is not None:
-    #         assert num_training_examples >= bsize
-    #         seeds = sample_seeds(num_training_examples, bsize)
-    #         data_sampler_args["seeds"] = seeds
-    #         task_sampler_args["seeds"] = [s + 1 for s in seeds]
-
-        # xs = data_sampler.sample_xs(
-        #     curriculum.n_points,
-        #     bsize,
-        #     curriculum.n_dims_truncated,
-        #     **data_sampler_args,
-        # )
-        # task = task_sampler(**task_sampler_args)
-        # ys = task.evaluate(xs)
-
+    
     x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = data_train_test_split_linear(
         **base_kwargs,
         sigma2_pure_context=DATAGEN_GLOBALS[datagen_choice]['sigma2_pure_context'])
@@ -673,8 +640,11 @@ def train(model, args):
 
     print("in train denoiser, shape and device of x_train", x_train.shape, x_train.device)
     train_dataset = DatasetWrapper(x_train, y_train)
+    test_dataset = DatasetWrapper(x_test, y_test)
+    
     nwork = 0
-    train_loader = DataLoader(train_dataset, batch_size=bsize, shuffle=True, num_workers=nwork)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork) #TODO@DR: is this correct to shuffle in test?
 
     
     # inspect network class
@@ -683,13 +653,13 @@ def train(model, args):
     print('\tparams[0].size():', params[0].size())
 
 
-    # loss_func = task.get_training_metric()
     loss_func  = nn.MSELoss()
 
-    full_loss_sample_interval = 4
+    full_loss_sample_interval = 4 
 
-    epochs = 100 
-    batch_size = bsize #TODO@DR rename params for consistency - will want to use yaml and wandb
+    epochs = args.training["epochs"]
+    #TODO@DR rename params for consistency - will want to use yaml and wandb
+
      ################################################################################
     # prep loss curves (x, y arrays)
     ################################################################################
@@ -702,11 +672,11 @@ def train(model, args):
     # monitor the train error on the full test set every k batches (could be more/less than once per epoch)
     train_full_mse_loss = report_dataset_loss(model, loss_func, train_loader, 'train')
     # monitor the test error on the full test set every k batches (could be more/less than once per epoch)
-    # test_full_mse_loss = report_dataset_loss(model, criterion, test_loader, 'test')
+    test_full_mse_loss = report_dataset_loss(model, loss_func, test_loader, 'test')
 
     curve_y_losstrain_epochs_avg = []  # will append to this each epoch
     curve_y_losstrain_batch = []  # we begin tracking AFTER the first batch (could get loss nograd first batch here)
-    # curve_y_losstest_interval = [test_full_mse_loss]  # will append to this each full_loss_sample_interval batches
+    curve_y_losstest_interval = [test_full_mse_loss]  # will append to this each full_loss_sample_interval batches
     curve_y_losstrain_interval = [train_full_mse_loss]  # will append to this each epoch
 
     ################################################################################
@@ -716,7 +686,7 @@ def train(model, args):
     count = 1  # batch counter
     period_save_weights = 1 # how often to save manually 
 
-    io_dict = {} #TODO@this has some function
+    io_dict = {} #TODO@this has some function; put in yaml
 
     for epoch in range(epochs):
          
@@ -753,7 +723,7 @@ def train(model, args):
 
     print('Finished Training')
     train_loss_end = report_dataset_loss(model, loss_func, train_loader, 'train')
-    # test_loss_end = report_dataset_loss(net, criterion, test_loader, 'test')
+    test_loss_end = report_dataset_loss(model, loss_func, test_loader, 'test')
 
     print('curve_x_losstrain_epochs_avg', curve_x_losstrain_epochs_avg)
     print('curve_y_losstrain_epochs_avg', curve_y_losstrain_epochs_avg, '\n')
@@ -832,7 +802,7 @@ def main(args):
 
     # model = build_model(args.model)
     # model = TransformerModelV1nores(context_len, dim_n)
-    model = TransformerModelV3(context_len, dim_n)
+    model = TransformerModelV2nores(context_len, dim_n)
     # model.cuda()
     model.to(device)
     model.train()

@@ -1,0 +1,34 @@
+test_run:
+
+model:
+    family: gpt2
+    n_embd: 256
+    n_layer: 12
+    n_head: 8
+    n_dims: 5
+    n_positions: 11
+
+training:
+    task: denoise_linear
+    data: gaussian
+    noise: gaussian
+    num_training_examples:
+    task_kwargs: {}
+    batch_size: 80
+    learning_rate: 0.0001
+    save_every_steps: 1000
+    keep_every_steps: 100000
+    num_tasks:
+    train_steps: 3 #5001
+    resume_id:
+    epochs: 10
+
+out_dir: ../models/linear_denoise0
+
+wandb:
+    name: "linear_case"
+    project: in-context-denoising
+    entity: denisa-roberts
+    notes:
+    log_every_steps: 1
+
