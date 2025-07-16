@@ -14,19 +14,20 @@ from samplers import get_data_sampler, sample_transformation
 from tasks import get_task_sampler
 
 if not torch.backends.mps.is_available():
-    print('\nMPS device not found.')
+    print("\nMPS device not found.")
     mps_device = None
-     
+
 if torch.backends.mps.is_available():
-        device = torch.device("mps")
-        mps_device = torch.device("mps")
-        x = torch.ones(1, device=device)
-        print('\nCheck M1 chip:', x)
+    device = torch.device("mps")
+    mps_device = torch.device("mps")
+    x = torch.ones(1, device=device)
+    print("\nCheck M1 chip:", x)
 elif torch.cuda.is_available():
-        device = torch.device("cuda:0")
+    device = torch.device("cuda:0")
 else:
-        device = "cpu"
-print('device selected:', device)
+    device = "cpu"
+print("device selected:", device)
+
 
 def get_model_from_run(run_path, step=-1, only_conf=False):
     config_path = os.path.join(run_path, "config.yaml")
@@ -41,16 +42,42 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
     # for name, param in model.named_parameters():
     #         print(f"Name: {name}, Shape: {param.shape}")
 
-
-    if step == -1: #this is chosen for the eval notebook
+    if step == -1:  # this is chosen for the eval notebook
         state_path = os.path.join(run_path, "state.pt")
         print("what is state path", state_path)
-        state = torch.load(state_path, map_location=torch.device('cpu'), weights_only=True)
+        state = torch.load(
+            state_path, map_location=torch.device("cpu"), weights_only=True
+        )
         # print("what is the state dict keys", state.keys())
         # print("what are the model_state_dict keys loaded from path", state["model_state_dict"].keys())
         # make a new state_dict to remove the not found keys
         new_state_dict = dict()
-        not_found_keys_in_model = {"_backbone.h.0.attn.bias", "_backbone.h.0.attn.masked_bias", "_backbone.h.1.attn.bias", "_backbone.h.1.attn.masked_bias", "_backbone.h.2.attn.bias", "_backbone.h.2.attn.masked_bias", "_backbone.h.3.attn.bias", "_backbone.h.3.attn.masked_bias", "_backbone.h.4.attn.bias", "_backbone.h.4.attn.masked_bias", "_backbone.h.5.attn.bias", "_backbone.h.5.attn.masked_bias", "_backbone.h.6.attn.bias", "_backbone.h.6.attn.masked_bias", "_backbone.h.7.attn.bias", "_backbone.h.7.attn.masked_bias", "_backbone.h.8.attn.bias", "_backbone.h.8.attn.masked_bias", "_backbone.h.9.attn.bias", "_backbone.h.9.attn.masked_bias", "_backbone.h.10.attn.bias", "_backbone.h.10.attn.masked_bias", "_backbone.h.11.attn.bias", "_backbone.h.11.attn.masked_bias"}
+        not_found_keys_in_model = {
+            "_backbone.h.0.attn.bias",
+            "_backbone.h.0.attn.masked_bias",
+            "_backbone.h.1.attn.bias",
+            "_backbone.h.1.attn.masked_bias",
+            "_backbone.h.2.attn.bias",
+            "_backbone.h.2.attn.masked_bias",
+            "_backbone.h.3.attn.bias",
+            "_backbone.h.3.attn.masked_bias",
+            "_backbone.h.4.attn.bias",
+            "_backbone.h.4.attn.masked_bias",
+            "_backbone.h.5.attn.bias",
+            "_backbone.h.5.attn.masked_bias",
+            "_backbone.h.6.attn.bias",
+            "_backbone.h.6.attn.masked_bias",
+            "_backbone.h.7.attn.bias",
+            "_backbone.h.7.attn.masked_bias",
+            "_backbone.h.8.attn.bias",
+            "_backbone.h.8.attn.masked_bias",
+            "_backbone.h.9.attn.bias",
+            "_backbone.h.9.attn.masked_bias",
+            "_backbone.h.10.attn.bias",
+            "_backbone.h.10.attn.masked_bias",
+            "_backbone.h.11.attn.bias",
+            "_backbone.h.11.attn.masked_bias",
+        }
         for k in state["model_state_dict"].keys():
             if k in not_found_keys_in_model:
                 continue
@@ -60,7 +87,9 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
         model.load_state_dict(new_state_dict)
     else:
         model_path = os.path.join(run_path, f"model_{step}.pt")
-        state_dict = torch.load(model_path, map_location=torch.device('cpu'), weights_only=True)
+        state_dict = torch.load(
+            model_path, map_location=torch.device("cpu"), weights_only=True
+        )
         model.load_state_dict(state_dict)
 
     return model, conf
@@ -351,7 +380,6 @@ def get_run_metrics(
     return all_metrics
 
 
-
 def conf_to_model_name(conf):
     print("what is conf ", conf)
     if conf.model["family"] == "gpt2":
@@ -422,6 +450,7 @@ def read_run_dir(run_dir):
     df = pd.DataFrame(all_runs).sort_values("run_name")
     assert len(df) == len(df.run_name.unique())
     return df
+
 
 if __name__ == "__main__":
     run_dir = sys.argv[1]

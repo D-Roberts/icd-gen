@@ -12,6 +12,7 @@ from eval import get_run_metrics
 from tasks import get_task_sampler
 from samplers import get_data_sampler
 from curriculum import Curriculum
+
 # from schema import schema
 from models import build_model
 
@@ -22,18 +23,18 @@ torch.backends.cudnn.benchmark = True
 from data_gen_denoise_toy import DATAGEN_GLOBALS, data_train_test_split_linear
 
 # gen data for linear only, skip vis
-       
+
 datagen_seed = 0
 idx = 0
 datagen_choice = 0
-context_len = 11 
+context_len = 11
 dim_n = 5
 test_ratio = 0
 
-#datagen_seed = 15  # None  |  15, 4
+# datagen_seed = 15  # None  |  15, 4
 
 ###datagen_choice = 1   # {0, 1, 2} -> {linear, clusters, manifold}
-datagen_label = ['linear'][datagen_choice]
+datagen_label = ["linear"][datagen_choice]
 
 sigma2_corruption = 0.1
 
@@ -44,34 +45,36 @@ base_kwargs = dict(
     context_examples_per_W=1,
     samples_per_context_example=1,
     test_ratio=test_ratio,
-    verbose=True,  
-    as_torch=True,  #it was false and numpies outputed
-    savez_fname=None,  
-    seed=datagen_seed,  
-    style_subspace_dimensions=DATAGEN_GLOBALS[datagen_choice]['style_subspace_dimensions'],
-    style_origin_subspace=DATAGEN_GLOBALS[datagen_choice]['style_origin_subspace'],
-    style_corruption_orthog=DATAGEN_GLOBALS[datagen_choice]['style_corruption_orthog'],
+    verbose=True,
+    as_torch=True,  # it was false and numpies outputed
+    savez_fname=None,
+    seed=datagen_seed,
+    style_subspace_dimensions=DATAGEN_GLOBALS[datagen_choice][
+        "style_subspace_dimensions"
+    ],
+    style_origin_subspace=DATAGEN_GLOBALS[datagen_choice]["style_origin_subspace"],
+    style_corruption_orthog=DATAGEN_GLOBALS[datagen_choice]["style_corruption_orthog"],
     sigma2_corruption=sigma2_corruption,
 )
 
-#test out training the icl models directly for icl denoise linear task
+# test out training the icl models directly for icl denoise linear task
 
 
 # AVAIL_GPUS = min(1, torch.cuda.device_count())
 if not torch.backends.mps.is_available():
-    print('\nMPS device not found.')
+    print("\nMPS device not found.")
     mps_device = None
-     
+
 if torch.backends.mps.is_available():
-        device = torch.device("mps")
-        mps_device = torch.device("mps")
-        x = torch.ones(1, device=device)
-        print('\nCheck M1 chip:', x)
+    device = torch.device("mps")
+    mps_device = torch.device("mps")
+    x = torch.ones(1, device=device)
+    print("\nCheck M1 chip:", x)
 elif torch.cuda.is_available():
-        device = torch.device("cuda:0")
+    device = torch.device("cuda:0")
 else:
-        device = "cpu"
-print('device selected:', device)
+    device = "cpu"
+print("device selected:", device)
 
 
 def train_step(model, xs, ys, optimizer, loss_func):
@@ -140,20 +143,26 @@ def train(model, args):
         task = task_sampler(**task_sampler_args)
         # ys = task.evaluate(xs)
 
-        xs, ys, x_test, y_test, train_data_subspaces, test_data_subspaces = data_train_test_split_linear(
-            **base_kwargs,
-            sigma2_pure_context=DATAGEN_GLOBALS[datagen_choice]['sigma2_pure_context'])
-
+        xs, ys, x_test, y_test, train_data_subspaces, test_data_subspaces = (
+            data_train_test_split_linear(
+                **base_kwargs,
+                sigma2_pure_context=DATAGEN_GLOBALS[datagen_choice][
+                    "sigma2_pure_context"
+                ],
+            )
+        )
 
         loss_func = task.get_training_metric()
 
         # loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
-        xs = torch.permute(xs, (0,2,1))
+        xs = torch.permute(xs, (0, 2, 1))
         ys = torch.squeeze(ys, -1)
         print("xs shape in train", xs.shape)
         print("ys shape in train", ys.shape)
 
-        loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func)
+        loss, output = train_step(
+            model, xs.to(device), ys.to(device), optimizer, loss_func
+        )
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
@@ -240,16 +249,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.config_file:
-        with open(args.config_file, 'r') as f:
+        with open(args.config_file, "r") as f:
             config = yaml.safe_load(f)
             parser.set_defaults(**config)
-        args = parser.parse_args() # Reload arguments to apply YAML values
-
+        args = parser.parse_args()  # Reload arguments to apply YAML values
 
     assert args.model["family"] in ["gpt2", "lstm"]
     print(f"Running with: {args}")
 
-   
     if not args.test_run:
         run_id = args.training["resume_id"]
         if run_id is None:
