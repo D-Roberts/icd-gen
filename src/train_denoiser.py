@@ -734,20 +734,6 @@ def train(model, args):
 
     #OK: next - make this nice and train the linear case (on MPS for now)
 
-            # point_wise_tags = list(range(curriculum.n_points))
-            # # point_wise_loss_func = task.get_metric()
-
-            # # point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
-            # # point_wise_loss = point_wise_loss_func(output, y_train.to(device)).mean(dim=0)
-            # point_wise_loss = loss_func(output, y_train.to(device)).mean(dim=0)
-
-            # baseline_loss = (
-            #     sum(
-            #         max(curriculum.n_dims_truncated - ii, 0)
-            #         for ii in range(curriculum.n_points)
-            #     )
-            #     / curriculum.n_points
-            # )
 
             # if i % args.wandb["log_every_steps"] == 0 and not args.test_run:
             #     wandb.log(
@@ -763,7 +749,7 @@ def train(model, args):
             #         step=i,
             #     )
 
-            # curriculum.update()
+           
 
             # pbar.set_description(f"loss {loss}")
             # if i % args.training["save_every_steps"] == 0 and not args.test_run:
@@ -809,16 +795,14 @@ def main(args):
 
     train(model, args)
 
-    # if not args.test_run:
-    #     _ = get_run_metrics(args.out_dir)  # precompute metrics for eval
-
+   
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="My application description.")
-    # args = parser.parse_quinfig()
+    parser = argparse.ArgumentParser(description="Arguments for the denoising icl task, data gen, train, and eval.")
+    
     parser.add_argument("--config-file", help="Path to YAML config file")
     parser.add_argument("--model", default="default_value")
-    parser.add_argument("--test_run", default=None)
+    
 
     args = parser.parse_args()
 
@@ -829,21 +813,21 @@ if __name__ == "__main__":
         args = parser.parse_args() # Reload arguments to apply YAML values
 
 
-    # assert args.model["family"] in ["gpt2", "lstm"]
-    # print(f"Running with: {args}")
+    assert args.model["family"] in ["gpt2", "1linearT1H", "1softmaxT1H", "2softmaxT1H", "2softmaxTres", "1softmaxT2H", "1linearT2H", "tanhT"]
+    print(f"Running with: {args}")
 
    
-    # if not args.test_run:
-    #     run_id = args.training["resume_id"]
-    #     if run_id is None:
-    #         run_id = str(uuid.uuid4())
+    if not args.test_run:
+        run_id = args.training["resume_id"]
+        if run_id is None:
+            run_id = str(uuid.uuid4())
 
-    #     out_dir = os.path.join(args.out_dir, run_id)
-    #     if not os.path.exists(out_dir):
-    #         os.makedirs(out_dir)
-    #     args.out_dir = out_dir
+        out_dir = os.path.join(args.out_dir, run_id)
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        args.out_dir = out_dir
 
-    #     with open(os.path.join(out_dir, "config.yaml"), "w") as yaml_file:
-    #         yaml.dump(args.__dict__, yaml_file, default_flow_style=False)
+        with open(os.path.join(out_dir, "config.yaml"), "w") as yaml_file:
+            yaml.dump(args.__dict__, yaml_file, default_flow_style=False)
 
     main(args)
