@@ -22,6 +22,7 @@ training:
     train_steps: 3 #5001
     resume_id:
     epochs: 10
+    scheduler_kwargs: 
 
 out_dir: ../models/linear_denoise0
 

@@ -16,10 +16,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
-
-from eval import get_run_metrics
-from tasks import get_task_sampler
-from samplers import get_data_sampler
+import torch.optim as optim
 
 
 from models import build_model, TransformerModelV1nores, TransformerModelV3, TransformerModelV2nores
@@ -618,7 +615,21 @@ def sample_seeds(total_seeds, count):
 
 
 def train(model, args):
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.training["learning_rate"])
+
+    ################################################################################
+    # Model ID string
+    ################################################################################
+    data_suffix = "TODO-add"
+    nn_fpath = "TODO-add"
+    opt_suffix = "TODO-add"
+    epochs = args.training["epochs"]
+    
+    model_fname = '%s_L%d_n%d_e%d_%s_%s' % (nn_fpath, context_len, dim_n, epochs, data_suffix,
+                                            opt_suffix)  # used as specialized label for model settings and run
+
+
+    adam_lr =args.training["learning_rate"]
+    optimizer = torch.optim.Adam(model.parameters(), lr = adam_lr)
 
     #this is from icl
     state_path = os.path.join(args.out_dir, "state.pt")
@@ -642,6 +653,26 @@ def train(model, args):
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
     
+    
+    runinfo_optimizer_lines = ['\tadam_lr, %.2e' % adam_lr]
+    opt_suffix = 'adam%.1e' % adam_lr  # appended to fname
+
+    #I'm not using sgd with momentum
+
+    if args.training["scheduler_kwargs"] is None:
+        scheduler = optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=[epochs + 1], gamma=1.0)  # dummy scheduler, no effect
+    elif args.training["scheduler_kwargs"] == "cosine":
+        pass #TODO@DR better
+    else:
+        #scheduler_lr = torch.MultiStepLR(optimizer, milestones=[30, 80], gamma=0.1)
+        scheduler = optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=args.training["scheduler_kwargs"]['milestones'], gamma=args.training["scheduler_kwargs"]['gamma'])
+        opt_suffix = opt_suffix + '_sched'  # appended to fname
+        runinfo_optimizer_lines.append('\tscheduler, %s' % args.training["scheduler_kwargs"])
+    
     nwork = 0
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork) #TODO@DR: is this correct to shuffle in test?
@@ -657,8 +688,7 @@ def train(model, args):
 
     full_loss_sample_interval = 4 
 
-    epochs = args.training["epochs"]
-    #TODO@DR rename params for consistency - will want to use yaml and wandb
+
 
      ################################################################################
     # prep loss curves (x, y arrays)
@@ -686,13 +716,16 @@ def train(model, args):
     count = 1  # batch counter
     period_save_weights = 1 # how often to save manually 
 
-    io_dict = {} #TODO@this has some function; put in yaml
+    io_dict = {'dir_checkpoints':'dir_checkpoints'} #TODO@this has some function; put in yaml
+    
 
     for epoch in range(epochs):
          
-        #  if epoch % period_save_weights == 0:
-        #     model_path = io_dict['dir_checkpoints'] + os.sep + 'model_e%d' % epoch + '.pth'
-        #     torch.save(model.state_dict(), model_path)
+        if epoch % period_save_weights == 0:
+            # model_path = io_dict['dir_checkpoints'] + os.sep + 'model_e%d' % epoch + '.pth'
+            torch.save(model.state_dict(), os.path.join(args.out_dir, f"model_{period_save_weights}.pt")) #TODO: set their namings
+            # torch.save(model.state_dict(), model_path)
+
         running_loss_epoch = 0.0
         running_loss_mesoscale = 0.0
         running_batch_counter = 0
@@ -704,8 +737,7 @@ def train(model, args):
             print("targets shape and device", targets.shape, targets.device) #(batch size, n dim of last token)
         
 
-        
-
+            # train step from icl
             loss, output = train_step(model, inputs.to(device), targets.to(device), optimizer, loss_func)
             print("loss ", loss)
             curve_y_losstrain_batch.append(loss)
@@ -713,15 +745,31 @@ def train(model, args):
             # print statistics
             running_loss_epoch     += curve_y_losstrain_batch[-1]  # was [count]
             running_loss_mesoscale += curve_y_losstrain_batch[-1]  # was [count]
+# (slow) periodic inspection of test error
+            if count % full_loss_sample_interval == 0:  # report it every "full_loss_sample_interval" batches
+                print('Epoch: %d, batch: %4d, loss (avg): %.2e' % (
+                    epoch, count, running_loss_mesoscale / full_loss_sample_interval))
+                print('running_loss_mesoscale, full_loss_sample_interval, count |', running_loss_mesoscale,
+                      full_loss_sample_interval, count)
 
-            
+                loss_test = report_dataset_loss(model, loss_func, test_loader, 'test')
+                curve_y_losstest_interval.append(loss_test)
+
+                loss_train = report_dataset_loss(model, loss_func, train_loader, 'train')
+                curve_y_losstrain_interval.append(loss_train)
+
+                running_loss_mesoscale = 0.0
 
             count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
+
+        scheduler.step()  # step the learning rate scheduler
+        print('\tlast LR:', scheduler.get_last_lr())
         print('end epoch:', epoch, '====================')
         curve_y_losstrain_epochs_avg.append(running_loss_epoch / running_batch_counter)
 
     print('Finished Training')
+
     train_loss_end = report_dataset_loss(model, loss_func, train_loader, 'train')
     test_loss_end = report_dataset_loss(model, loss_func, test_loader, 'test')
 
@@ -789,10 +837,12 @@ def main(args):
     # model = build_model(args.model)
     # model = TransformerModelV1nores(context_len, dim_n)
     model = TransformerModelV2nores(context_len, dim_n)
-    # model.cuda()
-    model.to(device)
-    model.train()
 
+    model.to(device)
+    
+
+
+    model.train()
     train(model, args)
 
    
