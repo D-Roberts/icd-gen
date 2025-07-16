@@ -20,6 +20,7 @@ import torch.optim as optim
 
 from baselines import loss_if_predict_zero, loss_if_predict_average, loss_if_predict_mostrecent, loss_if_predict_linalg, loss_if_predict_linalg_shrunken, theory_linear_expected_error
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
+from vis_utils import vis_weights_kq_pv
 
 from models import (
     build_model,
@@ -99,7 +100,7 @@ def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
     output = model(xs)
-    print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
+    # print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
     loss = loss_func(output, ys)
     loss.backward()
     optimizer.step()
@@ -416,6 +417,7 @@ def train(model, args):
     period_save_weights = args.training["period_save_weights"]
     count = 1
 
+    step_wand = 0
     for epoch in range(epochs):
 
         if epoch % period_save_weights == 0:
@@ -446,14 +448,16 @@ def train(model, args):
             )
             # print("loss ", loss)
 
-            # TODO: more detailed wandb
-
+            # TODO: more detailed wandb - this logging is is not working ok
+            step_wand+=1
             wandb.log(
                 {
-                    "overall_loss": loss,
+                    "batch_train_loss": loss,
                 },
-                step=int(len(train_loader) * epoch + i),
+                step=step_wand,
             )
+            
+
 
             curve_y_losstrain_batch.append(loss)
 
@@ -487,6 +491,12 @@ def train(model, args):
 
             count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
+            # wandb.log(
+            #     {
+            #         "epoch_train_loss": running_loss_epoch,
+            #     },
+            #     step=epoch,
+            # )
 
         scheduler.step()  # step the learning rate scheduler
         print("\tlast LR:", scheduler.get_last_lr())
@@ -630,8 +640,8 @@ def train(model, args):
                     val_test=theory_expected_error_linalg_shrunken,
                     pltkwargs=dict(color='mediumpurple', linestyle=':'))
 
-    # plt.plot(curve_y_losstrain_epochs_avg)
-    # plt.show()  # I can see epoch loss decreasing
+    plt.plot(curve_y_losstrain_epochs_avg)
+    plt.show()  # I can see epoch loss decreasing down to 0.7786882519721985 with 80 datapoints dim 32 context 500 linear 10 epoch
 
     # if i % args.wandb["log_every_steps"] == 0 and not args.test_run: TODO@add more plots to wandb
     #     wandb.log(
@@ -669,10 +679,13 @@ def main(args):
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
     else:
-        # model = TransformerModelV1nores(context_len, dim_n)
+        # model = TransformerModelV1nores(args.training["context_len"], args.training["dim_n"]) #this seems to fit the best for the default
         model = TransformerModelV2nores(
             args.training["context_len"], args.training["dim_n"]
         )
+        # model = TransformerModelV3(
+        #    args.training["context_len"], args.training["dim_n"] #very very different
+        #  )
 
     model.to(device)
     model.train()
@@ -687,8 +700,8 @@ def main(args):
             learned_W_KQ = learned_W_KQ * np.eye(args.training["dim_n"])
             learned_W_PV = learned_W_PV * np.eye(args.training["dim_n"])
 
-        # vis_weights_kq_pv(learned_W_KQ, learned_W_PV, titlemod=r'$\theta$ final',
-        #                 dir_out=io_dict['dir_vis'], fname='weights_final', flag_show=True)
+        vis_weights_kq_pv(learned_W_KQ, learned_W_PV, titlemod=r'$\theta$ final',
+                        dir_out=io_dict['dir_vis'], fname='weights_final', flag_show=True)
 
 
 if __name__ == "__main__":

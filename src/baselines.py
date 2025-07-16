@@ -11,9 +11,9 @@ def theory_linear_expected_error(dim_n, W_dim_d, sigma2_corruption, sigma2_pure_
     """
     in paper we don't scale by 1/dim_n (ambient # features), but we do here since torch does same automatically
     """
-    print("what is", W_dim_d)
-    print("wht is dim_n in theory_linear", dim_n)
-    
+    # print("what is", W_dim_d)
+    # print("wht is dim_n in theory_linear", dim_n)
+
     return (W_dim_d / dim_n) * sigma2_corruption * sigma2_pure_context / (sigma2_pure_context + sigma2_corruption)
 
 

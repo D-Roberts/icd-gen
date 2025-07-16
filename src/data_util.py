@@ -1,3 +1,4 @@
+import os
 import numpy as np 
 
 import matplotlib.pyplot as plt 
@@ -436,3 +437,11 @@ def data_train_test_split_linear(
 
     return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
 
+def reload_lossbaseline_dict(dir_replot):
+    with open(dir_replot + os.sep + 'loss_baselines.txt') as f:
+        loss_baselines_dict = {}
+        lines = [a.strip() for a in f.readlines()]
+        for lstr in lines:
+            a, b_str = lstr.split(',')
+            loss_baselines_dict[a] = float(b_str)
+        return loss_baselines_dict
