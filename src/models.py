@@ -631,7 +631,7 @@ class TransformerModelV1nores(TransformerModelV1):
         ]  # take dim_n output result at last token, for all batches
         return out
 
-
+#TODO@DR add here my others
 MODEL_CLASS_FROM_STR = {
     "TransformerModelV1": {"class": TransformerModelV1, "alias": "TV1"},
     "TransformerModelV1nores": {"class": TransformerModelV1nores, "alias": "TV1nr"},

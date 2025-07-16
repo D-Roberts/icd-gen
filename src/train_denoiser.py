@@ -5,7 +5,7 @@ from random import randint
 import uuid
 
 import argparse
-
+import wandb
 from tqdm import tqdm
 
 import numpy as np
@@ -18,6 +18,8 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import torch.optim as optim
 
+from baselines import loss_if_predict_zero, loss_if_predict_average, loss_if_predict_mostrecent, loss_if_predict_linalg, loss_if_predict_linalg_shrunken, theory_linear_expected_error
+from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
 
 from models import (
     build_model,
@@ -26,8 +28,9 @@ from models import (
     TransformerModelV2nores,
     MODEL_CLASS_FROM_STR,
 )
+from util import run_subdir_setup
 
-import wandb
+
 
 torch.backends.cudnn.benchmark = True
 if not torch.backends.mps.is_available():
@@ -63,596 +66,6 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 DATASET_CASES = {0: "Linear", 1: "Clustering", 2: "Manifold (sphere)"}
 
 
-# from denoise
-def report_dataset_loss(
-    net, criterion, dataloader, data_label, print_val=False, plot_some=False
-):
-    mse_loss_total = 0
-    count = 0.0
-    with torch.no_grad():
-        for i, data in enumerate(dataloader, 0):
-            samples, targets = data
-            outputs = net(samples.to(device))
-
-            if plot_some:
-                # visualization and debugging
-                if count < 5:
-                    plt.plot(outputs, label="pred")
-                    plt.plot(targets, label="true")
-                    plt.legend()
-                    plt.show()
-
-            mse_loss_total += criterion(
-                outputs.to(device), targets.to(device)
-            ).item()  # add the *mean* MSE for the batch to mse_loss_total
-
-            # Note: we could do count += bsz, but we assume batch-mean inside criterion call
-            # e.g. count += samples.size(0)
-            #  - this would resolve edge issue when dataset (e.g. test set) not divisible by bsz
-            count += 1  # this +1 and divide by count assumes batch-mean inside criterion call, as is done above
-
-    mse_loss = mse_loss_total / count
-    if print_val:
-        print("\t%s data loss: %.3e (batches=%d)" % (data_label, mse_loss, count))
-    return mse_loss
-
-
-# DIR_CURRENT = os.path.dirname(__file__)
-# DIR_PARENT = os.path.dirname(DIR_CURRENT)
-# sys.path.append(DIR_PARENT)
-
-
-# # default kwargs for dataset generation for each case 0: 'Linear', 1: 'Clustering', 2: 'Manifold'
-# DATAGEN_GLOBALS = {
-#     0: dict(
-#         sigma2_corruption=0.5,                    # applies to all cases
-#         style_corruption_orthog=False,            # if True, the noise is only in orthogonal directions
-#         style_origin_subspace=True,               # if True, the subspace must contain origin (not affine)
-#         style_subspace_dimensions='random',       # int or 'random'
-#         # parameters specific to the Linear case
-#         sigma2_pure_context=2.0,                  # controls radius of ball of pure of samples (default: 2.0)
-#         corr_scaling_matrix=None,                 # x = Pz; y = A x  \tilde x = A (x + z); (normally identity I_n)
-#     ),
-#     1: dict(
-#         sigma2_corruption=0.5,  # applies to all cases
-#         style_corruption_orthog=False,     # mandatory for this case
-#         style_origin_subspace=True,        # mandatory for this case
-#         style_subspace_dimensions='full',  # full means dim-n gaussian balls in R^n
-#         # parameters specific to the Clustering case
-#         style_cluster_mus='unit_norm',
-#         style_cluster_vars='isotropic',
-#         num_cluster=3,
-#         cluster_var=0.01,                   # controls radius of ball of pure of samples (default: 2.0); could be a list in Clustering case
-#     ),
-#     2: dict(
-#         sigma2_corruption=0.5,                # applies to all cases
-#         style_corruption_orthog=False,        # mandatory for this case
-#         style_origin_subspace=True,           # mandatory for this case
-#         style_subspace_dimensions='random',   # int or 'random'
-#         # parameters specific to the Manifold case
-#         radius_sphere=1.0,                    # controls radius of sphere (d-dim manifold S in R^n)
-#     ),
-# }
-
-# # asserts for Linear case
-# assert DATAGEN_GLOBALS[0]['style_subspace_dimensions'] in ['random'] or isinstance(DATAGEN_GLOBALS[0]['style_subspace_dimensions'], int)
-# assert DATAGEN_GLOBALS[0]['style_corruption_orthog'] is False
-# assert DATAGEN_GLOBALS[0]['style_origin_subspace'] is True
-
-
-# DIR_OUT = DIR_PARENT + os.sep + 'output'
-# DIR_DATA = DIR_PARENT + os.sep + 'input'
-# DIR_MODELS = DIR_PARENT + os.sep + 'models'
-# DIR_RUNS = DIR_PARENT + os.sep + 'runs'
-
-# for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
-#     if not os.path.exists(core_dir):
-#         os.mkdir(core_dir)
-
-
-def load_runinfo_from_rundir(dir_run, model_prefix=""):
-    """
-    Load runinfo.txt from a given run directory
-    """
-    runinfo_fpath = dir_run + os.sep + model_prefix + "runinfo.txt"
-    with open(runinfo_fpath, "r") as runinfo:
-        runinfo_lines = runinfo.readlines()
-
-    # step: convert runinfo to a dictionary and return it
-    runinfo_dict = {}
-    for line in runinfo_lines:
-        if line.split(",")[0].strip() == "scheduler":
-            key = line.split(",")[0]
-            val = ",".join(line.split(",")[1:]).strip()
-            val = eval(val)
-            assert isinstance(val, dict)
-        else:
-            key, val = line.split(",")
-            key, val = key.strip(), val.strip()
-        runinfo_dict[key] = val
-
-    # handle potentially ambiguous key -> value types
-    # - style_subspace_dimensions (int or str)
-    # - seed_dataset (None or int)
-    # - could have diff number of keys relating to gradient descent e.g. adam_lr, sgd_lr, etc. -- keep as str
-    for key in [
-        "epochs",
-        "batch_size",
-        "dim_n",
-        "context_len",
-        "train_plus_test_size",
-        "full_loss_sample_interval",
-        "context_examples_per_W",
-        "samples_per_context_example",
-        "num_W_in_dataset",
-    ]:
-        runinfo_dict[key] = int(runinfo_dict[key])
-    for key in ["style_subspace_dimensions"]:
-        if runinfo_dict[key] != "full":
-            runinfo_dict[key] = int(runinfo_dict[key])
-    for key in ["sigma2_corruption", "sigma2_pure_context", "test_ratio"]:
-        runinfo_dict[key] = float(runinfo_dict[key])
-    for key in ["style_corruption_orthog", "style_origin_subspace"]:
-        runinfo_dict[key] = (
-            runinfo_dict[key] == "True"
-        )  # if True, the bool val is True, else False
-
-    # specific checks for particular datagen cases
-    if "case1_specific_style_cluster_mus" in runinfo_dict.keys():
-        runinfo_dict["style_cluster_mus"] = runinfo_dict[
-            "case1_specific_style_cluster_mus"
-        ]
-        del runinfo_dict["case1_specific_style_cluster_mus"]
-
-    if "case1_specific_style_cluster_vars" in runinfo_dict.keys():
-        runinfo_dict["style_cluster_vars"] = runinfo_dict[
-            "case1_specific_style_cluster_vars"
-        ]
-        del runinfo_dict["case1_specific_style_cluster_vars"]
-
-    if "case1_specific_cluster_var" in runinfo_dict.keys():
-        runinfo_dict["cluster_var"] = float(runinfo_dict["case1_specific_cluster_var"])
-        del runinfo_dict["case1_specific_cluster_var"]
-
-    if "case1_specific_num_cluster" in runinfo_dict.keys():
-        runinfo_dict["num_cluster"] = int(runinfo_dict["case1_specific_num_cluster"])
-        del runinfo_dict["case1_specific_num_cluster"]
-    return runinfo_dict
-
-
-# # asserts for Linear case
-# assert DATAGEN_GLOBALS[0]['style_subspace_dimensions'] in ['random'] or isinstance(DATAGEN_GLOBALS[0]['style_subspace_dimensions'], int)
-# assert DATAGEN_GLOBALS[0]['style_corruption_orthog'] is False
-# assert DATAGEN_GLOBALS[0]['style_origin_subspace'] is True
-
-
-def gen_uniform_data(size, rng=None):
-    """
-    Return random np.array ~ *size* with U[-1,1] elements
-    - note $U[-1,1]$ has variance $1/12 (b-a)^2$ which gives $1/3$
-    - scaling the arr by C increases the variance by C^2 (and thus the std.dev by C)
-    """
-    rng = rng or np.random.default_rng()  # Use provided RNG or create one
-    arr = 2 * rng.random(size=size) - 1
-    return arr
-
-
-def gen_gaussian_data(mean, cov, size, rng=None):
-    """
-    Return random np.array ~ *size* with N(mu, cov) elements
-    - if size is an integer, then returned arr is {size x dim n}
-    """
-    rng = rng or np.random.default_rng()
-    arr = rng.multivariate_normal(
-        mean, cov, size=size, check_valid="raise"
-    )  # size x dim n
-    return arr
-
-
-# function to sample L vectors from W = {x in R^n | x = m + V c} for some c in R^d
-def sample_from_subspace(W_m, W_V, nsample, sigma_Z_sqr=1.0, uniform=True, rng=None):
-    """
-    Args
-    - W_m - array-like - n x k
-    - W_V - array-like - n x k
-
-    For each sample
-    - sample c -- U[-1, 1] vector of random coefficients in R^d (for basis W_V)
-    - then x = W_m + W_V @ c is a random vector from the subspace
-    Return:
-        np.array of size (n x nsample) where n is the dimension of the ambient space (n >= dim W == W_V.shape[1])
-    """
-    rng = rng or np.random.default_rng()
-    dim_n, dim_W = W_V.shape
-    if uniform:
-        c = gen_uniform_data(
-            (dim_W, nsample), rng=rng
-        )  # random coefficients for the basis {v_i}
-        # note by default, c will have a variance of 1/3 (U[-1,1]); we can scale it by
-        c = (
-            np.sqrt(3 * sigma_Z_sqr) * c
-        )  # e.g. if goal is variance of 10, then scale sqrt(3 * 10)
-        rand_samples = np.expand_dims(W_m, axis=1) + W_V @ c
-    else:
-        # gaussian ball method
-        x_blob = rng.multivariate_normal(W_m, sigma_Z_sqr * np.eye(dim_n), nsample)
-        projector_exact = W_V @ np.linalg.inv(W_V.T @ W_V) @ W_V.T
-        projection_b_onto_W = np.expand_dims(W_m, axis=1) + projector_exact @ (
-            x_blob.T - np.expand_dims(W_m, axis=1)
-        )
-        rand_samples = projection_b_onto_W
-    return rand_samples
-
-
-def data_train_test_split_util(
-    x_total,
-    y_total,
-    data_subspace_dict,
-    context_len,
-    dim_n,
-    num_W_in_dataset,
-    context_examples_per_W,
-    test_ratio,
-    as_torch=True,
-    savez_fname=None,
-    verbose=True,
-    rng=None,
-):
-    """
-    Used commonly by data_train_test_split_* functions - for * = {linear, clusters, manifold}
-
-    TODO make it so test ratio 1.0 or 0.0 makes the corresponding array empty (as opposed to nasty if/else currently)
-    """
-    if verbose:
-        print(
-            "Generating train/test data for NN training (context length = %d)..."
-            % context_len
-        )
-        print(
-            "\tcontext_len=%d, dim_n=%d, num_W_in_dataset=%d, examples_per_W=%d, test_ratio=%s"
-            % (context_len, dim_n, num_W_in_dataset, context_examples_per_W, test_ratio)
-        )
-        print("\tnsample_per_subspace (context_len):", context_len)
-        print("Total dataset size before split: %d (x,y) pairs" % len(y_total))
-
-    x_total = np.array(x_total).astype(np.float32)
-    y_total = np.array(y_total).astype(np.float32)
-
-    rng = (
-        rng or np.random.default_rng()
-    )  # determines how dataset is split; if no rng passed, create one
-
-    # now perform train test split and randomize
-    ntotal = len(y_total)
-    if test_ratio is None:
-        x_test = None
-        y_test = None
-        test_data_subspaces = None
-
-        ntrain = ntotal
-        train_indices_to_shuffle = [i for i in range(ntotal)]
-        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
-
-        # grab train data
-        x_train = x_total[train_indices, :, :]
-        y_train = y_total[train_indices, :]
-        # rebuild metadata dicts after shuffling
-        train_data_subspaces = dict()
-        for idx, val in enumerate(train_indices):
-            train_data_subspaces[idx] = data_subspace_dict[val].copy()
-
-        if verbose:
-            print("\t x_train:", x_train.shape)
-            print("\t y_train:", y_train.shape)
-            print("\t x_test: None")
-            print("\t y_test: None")
-
-        if savez_fname is not None:
-            assert savez_fname[-4:] == ".npz"
-            # save dataset to file
-            dataset_fpath = savez_fname
-            print("\nSaving dataset to file...", dataset_fpath)
-            np.savez_compressed(
-                dataset_fpath,
-                x_train=x_train,
-                y_train=y_train,
-                x_test=np.empty(1),
-                y_test=np.empty(1),
-            )
-
-        if as_torch:
-            x_train = torch.from_numpy(x_train)
-            y_train = torch.from_numpy(y_train)
-
-    else:
-        ntest = int(test_ratio * ntotal)
-        ntrain = ntotal - ntest
-
-        test_indices = rng.choice(ntotal, ntest, replace=False)
-        train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
-        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
-
-        # grab train data
-        x_train = x_total[train_indices, :, :]
-        y_train = y_total[train_indices, :]
-        # grab test data
-        x_test = x_total[test_indices, :, :]
-        y_test = y_total[test_indices, :]
-
-        # rebuild metadata dicts after shuffling
-        train_data_subspaces = dict()
-        test_data_subspaces = dict()
-        for idx, val in enumerate(train_indices):
-            train_data_subspaces[idx] = data_subspace_dict[val].copy()
-        for idx, val in enumerate(test_indices):
-            test_data_subspaces[idx] = data_subspace_dict[val].copy()
-
-        if verbose:
-            print("\t x_train:", x_train.shape)
-            print("\t y_train:", y_train.shape)
-            print("\t x_test:", x_test.shape)
-            print("\t y_test:", y_test.shape)
-
-        if savez_fname is not None:
-            assert savez_fname[-4:] == ".npz"
-            # save dataset to file
-            dataset_fpath = savez_fname
-            print("\nSaving dataset to file...", dataset_fpath)
-            np.savez_compressed(
-                dataset_fpath,
-                x_train=x_train,
-                y_train=y_train,
-                x_test=x_test,
-                y_test=y_test,
-            )
-
-        if as_torch:
-            x_train = torch.from_numpy(x_train)
-            y_train = torch.from_numpy(y_train)
-            x_test = torch.from_numpy(x_test)
-            y_test = torch.from_numpy(y_test)
-
-    return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
-
-
-def data_train_test_split_linear(
-    context_len=100,
-    dim_n=8,  # was 128
-    num_W_in_dataset=100,
-    context_examples_per_W=1,
-    samples_per_context_example=1,
-    test_ratio=0.2,
-    verbose=True,
-    seed=None,
-    style_subspace_dimensions="random",  # DATAGEN_GLOBALS[0]['style_subspace_dimensions'],
-    style_origin_subspace=True,  # DATAGEN_GLOBALS[0]['style_origin_subspace'],      # TODO convert to float  0 < m < 1 magnitude
-    style_corruption_orthog=False,  # DATAGEN_GLOBALS[0]['style_corruption_orthog'],  # TODO convert to float  0 < a < 1
-    sigma2_corruption=0.5,  # DATAGEN_GLOBALS[0]['sigma2_corruption'],
-    sigma2_pure_context=2.0,  # DATAGEN_GLOBALS[0]['sigma2_pure_context'],
-    corr_scaling_matrix=None,  # DATAGEN_GLOBALS[0]['corr_scaling_matrix'],
-    savez_fname=None,
-    as_torch=True,
-):
-    """
-    Args:
-    - test_ratio: float      - 0 <= x <= 1
-    - seed: None or int      - static randomization for the order of examples in test and train set
-
-    Vectors x_i live in R^n
-
-    Training sequences are of the form {x_1, ..., x_L, x_query} -> x_{L+1}
-     - x_1, ..., x_L lie on affine space W of dimension d < n
-     - the final input x_query lies outside W, and the task is to de-corrupt it by projecting onto W
-        - corruption procedure A: kick size of random magnitude in a direction orthogonal to W
-            kick_size = mu + sigma * np.random.randn()   (mu, sigma both 1.0)
-        - corruption procedure B: iid gaussian var = kick_size centered
-
-       W = {x in R^n | x = m + V c} for some c in R^d
-        - we do not directly provide V [n x d] or m [n x 1]
-        - these can be inferred from the mean and by PCA
-
-    - Teacher solution:
-        g(x_q) = mu + P (x_q - mu)  where  P_W = V (V^T V)^-1 V^T defines the projection onto underlying vector space
-                                            mu = mean(x_1, ..., x_L)
-    """
-    print("data_train_test_split_linear() args...")
-    print("\tstyle_subspace_dimensions:", style_subspace_dimensions)
-    print("\tstyle_origin_subspace:", style_origin_subspace)
-    print("\tstyle_corruption_orthog:", style_corruption_orthog)
-    print("\tcontext_len:", context_len)
-    print("\tdim_n:", dim_n)
-    print("\tnum_W_in_dataset:", num_W_in_dataset)
-    print("\tcontext_examples_per_W:", context_examples_per_W)
-    print("\tsamples_per_context_example:", samples_per_context_example)
-    print("\tsigma_corruption:", sigma2_corruption)
-    print("\tsigma_pure_context:", sigma2_pure_context)
-    print("\tcorr_scaling_matrix:", corr_scaling_matrix)
-    print("\tseed:", seed)
-    print("\tsavez_fname:", savez_fname)
-
-    assert samples_per_context_example == 1
-
-    rng = np.random.default_rng(seed=seed)
-
-    # generate potentially many k = 1, ..., K affine subspaces W of different dimension d << dim_n
-    # - K = num_W_in_dataset
-    # dim W should be at least 2? so dim_n >= 3?
-    # dim W should be at most a fraction of the context_len --OR-- dim_n - 1
-    if isinstance(style_subspace_dimensions, (np.integer, int)):
-        assert 1 <= style_subspace_dimensions <= min(dim_n, context_len // 2)
-        dim_d_k = style_subspace_dimensions * np.ones(
-            num_W_in_dataset, dtype=int
-        )  # all subspace same size
-    else:
-        assert style_subspace_dimensions == "random"
-        dim_d_k = np.random.randint(
-            1, min(dim_n, context_len // 2), size=num_W_in_dataset
-        )
-    print("data_train_test_split_linear(...)")
-    print("\tstyle_subspace_dimensions=%s" % style_subspace_dimensions)
-    print("\tdim_d_k min/max:", dim_d_k.min(), dim_d_k.max())
-
-    nsample_per_subspace = context_len  # alias | this is the length of the input sequence for sequence model
-    assert context_len > max(dim_d_k)
-
-    # sanity check
-    train_plus_test_size = (
-        num_W_in_dataset * context_examples_per_W * samples_per_context_example
-    )
-    print("data_train_test_split_linear(...)")
-    print(
-        "\ttrain_plus_test_size (%d) = num_W_in_dataset (%d) x context_examples_per_W (%d) x samples_per_context_example (%d)"
-        % (
-            train_plus_test_size,
-            num_W_in_dataset,
-            context_examples_per_W,
-            samples_per_context_example,
-        )
-    )
-
-    # create X, y training blob
-    x_total = []
-    y_total = []
-    data_subspace_dict = {j: {} for j in range(train_plus_test_size)}
-
-    j = 0
-    # for each dimensionality in the list above, generate a random m, V pair and use them to sample > d_max points
-    for k, dim_d in enumerate(dim_d_k):
-
-        # select offsets
-        rand_m = gen_uniform_data(dim_n, rng=rng)
-        if style_origin_subspace:
-            rand_m = np.zeros(dim_n)
-
-        # select basis (orthonormal via QR decomp)
-        # rand_V = gen_uniform_data((dim_n, dim_d + 1))              # d+1 is used below to get extra orthog direction
-        rand_V = gen_uniform_data(
-            (dim_n, dim_n), rng=rng
-        )  # dims d+1 to n are used below to create extra orthog directions
-        rand_V, _ = np.linalg.qr(rand_V)
-
-        # to corrupt x_query (final vector in each training sequence), we will give it a kick in orthogonal direction
-        W_random_orthog_direction = rand_V[
-            :, dim_d:
-        ]  # we leverage this in the style_corruption_orthog = True case
-        rand_V = rand_V[:, :dim_d]
-
-        """ 
-        - (A) mode where the corruption of the last token x_L is just a gaussian centered at x_L (i.e. not necc. orthogonal to the subspace)
-        - (B) alt, the corruption is orthogonal to the subspace (using the last direction of the synthetic dim_d + 1 size basis)
-        - consider two separate dataset modes: (A) and (B), could also interpolate between them as 0 <= alpha <= 1 and summing a A + (1-a) B
-        """
-        if style_corruption_orthog:
-            # samples the corruption kicks (in orthogonal directions)
-            """
-            # ORIGINAL WAY
-            corruption_kicks = sample_from_subspace(0 * rand_m, W_random_orthog_direction, examples_per_W, seed=seed1)
-            kick_mu, kick_sigma = sigma_corruption, 1.0  # was 1.0, 1.0 orig
-            np.random.seed(seed1)
-            kick_size = np.random.normal(loc=kick_mu, scale=kick_sigma, size=examples_per_W)
-            corruption_kicks = corruption_kicks * kick_size  # rescales corruption kicks... need to clean this up...
-            #corruption_kicks = corruption_kicks * 1  # rescales corruption kicks... need to clean this up...
-            """
-            # TODO cleanup this block so that it matches the one below and lengths scale with sigma_corruption
-            dim_W_perp = W_random_orthog_direction.shape[1]
-            assert dim_W_perp == dim_n - dim_d
-            corruption_cov = sigma2_corruption * np.eye(
-                dim_W_perp
-            )  # TODO replace by A @ A.T, given full rank A?
-            c = gen_gaussian_data(
-                np.zeros(dim_W_perp), corruption_cov, (context_examples_per_W), rng=rng
-            )  # random coefficients for the basis {v_i}; shape samples x dim_d
-            corruption_kicks = W_random_orthog_direction @ c.T
-        else:
-            corruption_mean = np.zeros(dim_n)
-            corruption_cov = sigma2_corruption * np.eye(dim_n)
-
-            # Alternative way of having non-isotropic corruption covariance
-            """
-            if corr_scaling_matrix is None:
-                corruption_cov = sigma2_corruption * np.eye(dim_n)
-            else:
-                print('WARNING - corr_scaling_matrix is not none, setting and normalizing induced covariance...')
-                # we normalize to original case by forcing trace to be sigma2_corruption * n
-                # - since total cov in isotropic case is sigma2_corruption * n
-                # - given any full rank A, we have the following steps:
-                #   1) compute frobenius norm of A
-                #   2) scale A as  A' = c A  with  c = sqrt(n) / ||A||_F
-                #   3) compute sigma_arr = A' @ A'.T
-                # - observe that Tr(sigma_arr) = Tr(A' @ A'.T) = ||A'||_F^2 = n   - matching identity matrix
-                '''
-                frob_norm_val = np.linalg.norm(corr_scaling_matrix, 'fro')  # square to get Tr(A @ A.T)
-                corr_scaling_matrix_normed = (np.sqrt(dim_n) / frob_norm_val) * corr_scaling_matrix
-                sigma_matrix_normed = corr_scaling_matrix_normed @ corr_scaling_matrix_normed.T
-                print(np.linalg.trace(sigma_matrix_normed))
-                print('='*20)
-                '''
-                corruption_cov = sigma2_corruption * sigma_matrix_normed  # TODO new form
-            """
-            corruption_kicks = gen_gaussian_data(
-                corruption_mean, corruption_cov, context_examples_per_W, rng=rng
-            )  # shape samples x dim_n
-            corruption_kicks = (
-                corruption_kicks.T
-            )  # shape dim_n x context_examples_per_W
-
-        for sample_idx in range(context_examples_per_W):
-            # generate samples from the random subspace
-            X_sequence = sample_from_subspace(
-                rand_m,
-                rand_V,
-                nsample_per_subspace,
-                sigma_Z_sqr=sigma2_pure_context,
-                rng=rng,
-                uniform=False,
-            )
-            corruption_kicks_for_sample = corruption_kicks[:, sample_idx]
-
-            # if non-isotropic covariance modification is used, we need to apply the scaling matrix
-            if corr_scaling_matrix is not None:
-                """
-                print('WARNING - corr_scaling_matrix is not none, setting and normalizing induced covariance...')
-                frob_norm_val = np.linalg.norm(corr_scaling_matrix, 'fro')  # square to get Tr(A @ A.T)
-                corr_scaling_matrix_normed = (np.sqrt(dim_n) / frob_norm_val) * corr_scaling_matrix
-                """
-                print("WARNING - corr_scaling_matrix is not none...")
-                X_sequence = corr_scaling_matrix @ X_sequence
-                corruption_kicks_for_sample = (
-                    corr_scaling_matrix @ corruption_kicks[:, sample_idx]
-                )
-
-            # corruption of last column
-            y_target = np.copy(X_sequence[:, -1])
-            X_sequence[:, -1] = y_target + corruption_kicks_for_sample
-
-            x_total.append(X_sequence)
-            y_total.append(y_target)
-
-            data_subspace_dict[j]["W_m"] = rand_m
-            data_subspace_dict[j]["W_V"] = rand_V
-            data_subspace_dict[j]["W_dim"] = dim_d
-            j += 1
-
-    x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
-        data_train_test_split_util(
-            x_total,
-            y_total,
-            data_subspace_dict,
-            context_len,
-            dim_n,
-            num_W_in_dataset,
-            context_examples_per_W,
-            test_ratio,
-            as_torch=as_torch,
-            savez_fname=savez_fname,
-            verbose=verbose,
-            rng=rng,
-        )
-    )
-
-    return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
-
-
 class DatasetWrapper(Dataset):
     """
     (relic): currently, there is a "remainder" batch at the end, with size smaller than batch_size -- could discard it
@@ -662,12 +75,6 @@ class DatasetWrapper(Dataset):
         self.x = X
         self.y = Y
 
-        print(
-            "what is self.x.size() in DatasetWrapper as X.shape and device and type",
-            self.x.shape,
-            self.x.device,
-            self.x.dtype,
-        )
         self.dim_n = self.x.size()[1]
         self.context_length = self.x.size()[2]
 
@@ -686,17 +93,8 @@ class DatasetWrapper(Dataset):
         return
 
 
-# datagen_seed = 0
-idx = 0
-# datagen_choice = 0
-# context_len = 500 # this is L
-# dim_n = 16 #this is the ambient dim I think n
-# test_ratio = 0.2
 
-# datagen_seed = 15  # None  |  15, 4
-
-
-# Leave this as is
+# Leave this as is from icl; see that I use the scheduler TODO@DR
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
@@ -832,14 +230,13 @@ def train(model, args):
             "Warning - flag_save_dataset - 1000 samples with n=32 still gives 60 MB, relatively big)"
         )
 
-    # Training loop hyperparameters
-    period_save_weights = 1  # save weights every k epochs, starting from 0
+    
 
     # From the provided model class string, get the shorthand model name and the class definition
     nn_fpath = MODEL_CLASS_FROM_STR[nn_model]["alias"]
     nn_class = MODEL_CLASS_FROM_STR[nn_model]["class"]
-    nn_fpath = "TODO-add"
-    opt_suffix = "TODO-add"
+    
+    opt_suffix = "adam"
 
     epochs = args.training["epochs"]
     context_len = args.training["context_len"]
@@ -873,6 +270,22 @@ def train(model, args):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_lr)
 
+    # Output settings for visualization after training
+    skip_PCA_heuristic_slow =  args.training["skip_PCA_heuristic_slow"]
+
+    ################################################################################
+    # Setup io dict
+    ################################################################################
+    io_dict = run_subdir_setup(dir_runs=DIR_RUNS, run_subfolder=None, timedir_override=None, minimal_mode=False)
+
+    if args.training["flag_save_dataset"]:
+        dataset_savez_fname = io_dict['dir_base'] + os.sep + 'training_dataset_split.npz'  # if none, do not save
+        # datagen_kwargs['savez_fname'] = dataset_savez_fname
+    else:
+        dataset_savez_fname = None
+        # datagen_kwargs['savez_fname'] = dataset_savez_fname
+
+
     # this is from icl
     state_path = os.path.join(DIR_RUNS, "state.pt")  # TODO@DR: not really sure where
     if os.path.exists(state_path):
@@ -894,6 +307,38 @@ def train(model, args):
     print(
         "in train denoiser, shape and device of x_train", x_train.shape, x_train.device
     )
+
+
+    ################################################################################
+    # Build or load data
+    ################################################################################
+    restart_nn_instance=None 
+    restart_dataset=None
+
+    if args.training["restart_dataset"] is not None:
+        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = restart_dataset
+        print('x_train.shape', x_train.shape)
+
+        # specify training and testing datasets
+        train_size = x_train.shape[0]
+        assert train_size == int(args.training["train_plus_test_size"] * (1 - test_ratio))  # sanity check
+
+        # fname suffix for io
+        data_suffix = 'RESTART-SAME-DATASET'  # appended to fname
+    else:
+        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = data_train_test_split_fncall(
+            **base_kwargs) #TODO@DR only change values through YAML; they have this datagen_kwarg dict update which is not clean code
+        print('x_train.shape', x_train.shape)
+
+        # specify training and testing datasets
+        train_size = x_train.shape[0]
+        print('train_size', train_size)
+        print('int(train_plus_test_size * (1 - test_ratio))', int(args.training["train_plus_test_size"] * (1 - test_ratio)))
+        assert train_size == int(args.training["train_plus_test_size"] * (1 - test_ratio))  # sanity check
+
+        data_suffix += '_tx%d_xpw%d_spx%d' % (
+            train_size, context_examples_per_W, samples_per_context_example)
+
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
 
@@ -952,9 +397,9 @@ def train(model, args):
     )
 
     # monitor the train error on the full test set every k batches (could be more/less than once per epoch)
-    train_full_mse_loss = report_dataset_loss(model, loss_func, train_loader, "train")
+    train_full_mse_loss = report_dataset_loss(model, loss_func, train_loader, "train", device)
     # monitor the test error on the full test set every k batches (could be more/less than once per epoch)
-    test_full_mse_loss = report_dataset_loss(model, loss_func, test_loader, "test")
+    test_full_mse_loss = report_dataset_loss(model, loss_func, test_loader, "test", device)
 
     curve_y_losstrain_epochs_avg = []  # will append to this each epoch
     curve_y_losstrain_batch = (
@@ -968,13 +413,8 @@ def train(model, args):
     ################################################################################
     # train loop
     ################################################################################
-
-    count = 1  # batch counter
-    period_save_weights = 1  # how often to save manually
-
-    io_dict = {
-        "dir_checkpoints": "dir_checkpoints"
-    }  # TODO@this has some function; put in yaml
+    period_save_weights = args.training["period_save_weights"]
+    count = 1
 
     for epoch in range(epochs):
 
@@ -1035,11 +475,11 @@ def train(model, args):
                     count,
                 )
 
-                loss_test = report_dataset_loss(model, loss_func, test_loader, "test")
+                loss_test = report_dataset_loss(model, loss_func, test_loader, "test", device)
                 curve_y_losstest_interval.append(loss_test)
 
                 loss_train = report_dataset_loss(
-                    model, loss_func, train_loader, "train"
+                    model, loss_func, train_loader, "train", device
                 )
                 curve_y_losstrain_interval.append(loss_train)
 
@@ -1055,17 +495,145 @@ def train(model, args):
 
     print("Finished Training")
 
-    train_loss_end = report_dataset_loss(model, loss_func, train_loader, "train")
-    test_loss_end = report_dataset_loss(model, loss_func, test_loader, "test")
+    ################################################################################
+    # Save model
+    ################################################################################
+    # save a copy of final model using detailed fname label
+    model_path = io_dict['dir_base'] + os.sep + model_fname + '.pth'
+    torch.save(model.state_dict(), model_path)
+    # save a copy of final model as 'model_final.pth'
+    model_path = io_dict['dir_checkpoints'] + os.sep + 'model_final' + '.pth'
+    torch.save(model.state_dict(), io_dict['dir_checkpoints'] + os.sep + 'model_final' + '.pth')
+    print('\nModel checkpoint saved to', model_path)
 
-    print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
-    print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
+    train_loss_end = report_dataset_loss(model, loss_func, train_loader, "train", device)
+    test_loss_end = report_dataset_loss(model, loss_func, test_loader, "test", device)
 
-    print("curve_x_losstrain_batch", curve_x_losstrain_batch)
-    plt.plot(curve_y_losstrain_epochs_avg)
-    plt.show()  # I can see epoch loss decreasing
+    print('curve_x_losstrain_epochs_avg', curve_x_losstrain_epochs_avg)
+    print('curve_y_losstrain_epochs_avg', curve_y_losstrain_epochs_avg, '\n')
 
-    # if i % args.wandb["log_every_steps"] == 0 and not args.test_run:
+    print('curve_x_losstrain_batch', curve_x_losstrain_batch)
+    print('curve_y_losstrain_batch', curve_y_losstrain_batch, '\n')
+
+    print('curve_x_lossrain_interval', curve_x_losstrain_interval)
+    print('curve_y_losstrain_interval', curve_y_losstrain_interval, '\n')
+
+    print('curve_x_losstest_interval', curve_x_losstest_interval)
+    print('curve_y_losstest_interval', curve_y_losstest_interval, '\n')
+
+    # skip the saving of info to txt - I have the yaml dump TODO@DR add to that
+    ################################################################################
+    # Plot loss dynamics against simple benchmarks
+    ################################################################################
+    
+    loss_vals_dict = {
+        'loss_train_batch': dict(
+            x=curve_x_losstrain_batch,
+            y=curve_y_losstrain_batch,
+            label='train (one batch)',
+            fname='curve_loss_train_batch',
+            pltkwargs=dict(linestyle='--', marker='o', color='b', markersize=4, markerfacecolor='None', alpha=0.3)),
+        'loss_train_epoch_avg': dict(
+            x=curve_x_losstrain_epochs_avg,
+            y=curve_y_losstrain_epochs_avg,
+            label='train (epoch moving avg)',
+            fname='curve_loss_train_epoch_avg',
+            pltkwargs=dict(linestyle='--', marker='o', color='b', markersize=4)),
+        'loss_train_interval': dict(
+            x=curve_x_losstrain_interval,
+            y=curve_y_losstrain_interval,
+            label='train (full)',
+            fname='curve_loss_train_interval',
+            pltkwargs=dict(linestyle='-', marker='o', color='b')),
+        'loss_test_interval': dict(
+            x=curve_x_losstest_interval,
+            y=curve_y_losstest_interval,
+            label='test (full)',
+            fname='curve_loss_test_interval',
+            pltkwargs=dict(linestyle='-', marker='o', color='r')),
+    }
+    print('Compare to null performance and lin.alg. baselines:')
+    dumb_A_mse_on_train = loss_if_predict_zero(loss_func, train_loader, 'train')
+    dumb_A_mse_on_test = loss_if_predict_zero(loss_func, test_loader, 'test')
+    dumb_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, 'train')
+    dumb_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, 'test')
+    dumb_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, 'train')
+    dumb_C_mse_on_test = loss_if_predict_average(loss_func, test_loader, 'test')
+
+    # add core baselines to loss_vals_dict (will also add datagen-case-specific ones later)
+    loss_vals_dict['baselines'] = {
+        'loss_if_predict_zero': dict(
+            alias='dumb_A',
+            label=r'guess $0$',
+            val_train=dumb_A_mse_on_train,
+            val_test=dumb_A_mse_on_test,
+            pltkwargs=dict(color='grey')),
+        'loss_if_predict_mostrecent': dict(
+            alias='dumb_B',
+            label=r'guess $x_{k-1}$',
+            val_train=dumb_B_mse_on_train,
+            val_test=dumb_B_mse_on_test,
+            pltkwargs=dict(color='green')),
+        'loss_if_predict_average': dict(
+            alias='dumb_C',
+            label=r'guess mean',
+            val_train=dumb_C_mse_on_train,
+            val_test=dumb_C_mse_on_test,
+            pltkwargs=dict(color='orange')),
+    }
+     # the following heuristics baselines are specific to case 0: Linear subspaces
+    if datagen_choice == "linear":
+        if not skip_PCA_heuristic_slow:
+            print('Warning: not skip_PCA_heuristic_slow; slow lin.alg. step...')
+            heuristic_mse_on_train = loss_if_predict_linalg(loss_func, train_loader, 'train')
+            heuristic_mse_on_test = loss_if_predict_linalg(loss_func, test_loader, 'test')
+
+            loss_vals_dict['baselines']['loss_if_predict_linalg'] = dict(
+                alias='heuristic_proj',
+                label=r'$P \tilde x$',
+                val_train=heuristic_mse_on_train,
+                val_test=heuristic_mse_on_test,
+                pltkwargs=dict(color='black'))
+
+            # also compute shrunken predictor
+            # - we assume proper subspace through origin
+            # - we assume it is iid gaussian ball corruption (not orthogonal to W)
+            if (style_origin_subspace) and (not style_corruption_orthog):  # we assume proper subspace through origin
+                heuristic_mse_shrunken_on_train = (
+                    loss_if_predict_linalg_shrunken(
+                        loss_func, train_loader, 'train', sigma2_pure_context, sigma2_corruption,
+                        style_origin_subspace=style_origin_subspace, style_corruption_orthog=style_corruption_orthog)
+                )
+                heuristic_mse_shrunken_on_test = (
+                    loss_if_predict_linalg_shrunken(
+                        loss_func, test_loader, 'test', sigma2_pure_context, sigma2_corruption,
+                        style_origin_subspace=style_origin_subspace, style_corruption_orthog=style_corruption_orthog)
+                )
+                assert style_subspace_dimensions == "random"
+                dim_d_k = np.random.randint(
+                    1, min(dim_n, context_len // 2), size=num_W_in_dataset
+                )
+                theory_expected_error_linalg_shrunken = theory_linear_expected_error(
+                    dim_n, dim_d_k, sigma2_corruption, linear_sigma2_pure_context) #style_subspace_dimensions is a string "random" TODO@DR not sure if correct
+
+                loss_vals_dict['baselines']['loss_if_predict_linalg_shrunken'] = dict(
+                    alias='heuristic_proj_shrunken',
+                    label=r'$\gamma P \tilde x$',
+                    val_train=heuristic_mse_shrunken_on_train,
+                    val_test=heuristic_mse_shrunken_on_test,
+                    pltkwargs=dict(color='mediumpurple'))
+
+                loss_vals_dict['baselines']['theory_expected_error_linalg_shrunken'] = dict(
+                    alias='theory_expected_error_linalg_shrunken',
+                    label=r'$\mathbb{E}[L(\theta^*)]$',
+                    val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
+                    val_test=theory_expected_error_linalg_shrunken,
+                    pltkwargs=dict(color='mediumpurple', linestyle=':'))
+
+    # plt.plot(curve_y_losstrain_epochs_avg)
+    # plt.show()  # I can see epoch loss decreasing
+
+    # if i % args.wandb["log_every_steps"] == 0 and not args.test_run: TODO@add more plots to wandb
     #     wandb.log(
     #         {
     #             "overall_loss": loss,
@@ -1079,23 +647,12 @@ def train(model, args):
     #         step=i,
     #     )
 
-    # pbar.set_description(f"loss {loss}")
-    # if i % args.training["save_every_steps"] == 0 and not args.test_run:
-    #     training_state = {
-    #         "model_state_dict": model.state_dict(),
-    #         "optimizer_state_dict": optimizer.state_dict(),
-    #         "train_step": i,
-    #     }
-    #     torch.save(training_state, state_path)
 
-    # if (
-    #     args.training["keep_every_steps"] > 0
-    #     and i % args.training["keep_every_steps"] == 0
-    #     and not args.test_run
-    #     and i > 0
-    # ):
-    #     torch.save(model.state_dict(), os.path.join(args.out_dir, f"model_{i}.pt"))
+    
 
+    return (model, model_fname, io_dict, loss_vals_dict,
+     train_loader, test_loader, x_train, y_train, x_test, y_test,
+     train_data_subspaces, test_data_subspaces)
 
 def main(args):
 
@@ -1119,7 +676,19 @@ def main(args):
 
     model.to(device)
     model.train()
-    train(model, args)
+    (net, model_fname, io_dict, loss_vals_dict,
+     train_loader, test_loader, x_train, y_train, x_test, y_test,
+     train_data_subspaces, test_data_subspaces) = train(model, args)
+    
+    if args.training["nn_model"] not in ['TransformerModelQKVnores']:
+        learned_W_KQ = net.W_KQ.detach().cpu().numpy()
+        learned_W_PV = net.W_PV.detach().cpu().numpy()
+        if learned_W_KQ.size == 1:  # in this case we are training 1-param weights (scaled identity) - remake as arr
+            learned_W_KQ = learned_W_KQ * np.eye(args.training["dim_n"])
+            learned_W_PV = learned_W_PV * np.eye(args.training["dim_n"])
+
+        # vis_weights_kq_pv(learned_W_KQ, learned_W_PV, titlemod=r'$\theta$ final',
+        #                 dir_out=io_dict['dir_vis'], fname='weights_final', flag_show=True)
 
 
 if __name__ == "__main__":

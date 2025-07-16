@@ -35,8 +35,7 @@ training:
     task: in-context denoise
     batch_size: 80
     learning_rate: 0.0001
-    save_every_steps: 1000
-    keep_every_steps: 100000
+    period_save_weights: 1
     train_steps:
     resume_id:
     epochs: 10
@@ -62,6 +61,7 @@ training:
     flag_vis_batch_perf: True 
     test_ratio: 0.2
     nwork: 0
+    skip_PCA_heuristic_slow: False
 
 wandb:
     name: "linear_case"
