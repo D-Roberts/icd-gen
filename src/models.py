@@ -543,61 +543,6 @@ class TransformerModelQKVnores(nn.Module):
         return out
 
 
-class TransformerModelV3(nn.Module):
-    """
-    [DR] 2-layer Simplest model:
-    - no positional encoding is used
-    - `linear self-attention` (no softmax wrapper used) in both layers
-    - TODO: with softmax otw it would just be a linear layer with the matmul and addition of the extra weight matrices
-
-    Notes
-     - dim_input - the dimension of input tokens
-     - dim_attn  - the dimension of the residual stream (attention head + MLP input and output)
-    """
-
-    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
-        super().__init__()
-        assert n_layer == 2
-        assert n_head == 1
-        assert dim_attn is None
-
-        # attention matrices (need to split by head...)
-        self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
-        self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
-        self.rho = context_length  # scaling used in Bartlett 2023
-
-        self.W_KQ1 = weight_matrix(dim_input, dim_input, mode="default")
-        self.W_PV1 = weight_matrix(dim_input, dim_input, mode="default")
-
-    def forward(self, xs):
-        """
-        xs is a sequence array of shape [batchsz, ndim, context_length]
-            - batchsz = batch size
-            - note the last two components match the math notation
-        """
-        batchsz, n_dim, n_tokens = xs.size()
-
-        W_KQ = self.W_KQ
-        W_PV = self.W_PV
-        rho = n_tokens
-
-        W_KQ1 = self.W_KQ1
-        W_PV1 = self.W_PV1
-
-        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / rho
-        print("attn arg shape", attn_arg.shape)  # ([80, 500, 500]) context len
-        f_attn = xs + W_PV @ xs @ attn_arg  # add; we would norm here too
-        print("f_attn shape", f_attn.shape)
-
-        # 2-nd layer
-        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / rho
-        f_attn1 = f_attn + W_PV1 @ f_attn @ attn_arg1
-
-        out = f_attn1[
-            :, :, -1
-        ]  # take dim_n output result at last token, for all batches
-        return out
-
 
 class TransformerModelV1nores(TransformerModelV1):
     """
@@ -630,6 +575,141 @@ class TransformerModelV1nores(TransformerModelV1):
             :, :, -1
         ]  # take dim_n output result at last token, for all batches
         return out
+    
+class TransformerModelV3(nn.Module):
+    """
+    [DR] 2-layer Simplest model:
+    - no positional encoding is used
+    - with softmax otw it would just be a linear layer with the matmul and addition of the extra weight matrices
+
+    Notes
+     - dim_input - the dimension of input tokens
+     - dim_attn  - the dimension of the residual stream (attention head + MLP input and output)
+    """
+
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2
+        assert n_head == 1
+        assert dim_attn is None #still take as dim input; keep it as simple as possible
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
+        self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
+        self.rho = 1.0  # scaling used in Bartlett 2023
+
+        self.W_KQ1 = weight_matrix(dim_input, dim_input, mode="default")
+        self.W_PV1 = weight_matrix(dim_input, dim_input, mode="default")
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        
+
+        W_KQ1 = self.W_KQ1
+        W_PV1 = self.W_PV1
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho #scaling as in V2
+        # print("attn arg shape", attn_arg.shape)  # ([80, 500, 500]) context len
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        f_attn = xs + W_PV @ xs @ softmax_attn_arg  # add; we would norm here too
+
+        # print("f_attn shape", f_attn.shape)
+
+        # 2-nd layer - identical add manually here for simplicity TODO: check in vit what is fed to next layer
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / self.rho
+        softmax_attn_arg1 = torch.softmax(attn_arg1)
+        f_attn1 = f_attn + W_PV1 @ f_attn @ softmax_attn_arg1
+
+        out = f_attn1[
+            :, :, -1
+        ]  # take dim_n output result at last token, for all batches
+        return out
+
+class TransformerModelV3nores(TransformerModelV3):
+    """
+    See docstring TransformerModelV3
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__(context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        
+
+        W_KQ1 = self.W_KQ1
+        W_PV1 = self.W_PV1
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs[:, :, [-1]] / self.rho #take last as they do in V2nores
+        # print("attn arg shape", attn_arg.shape)  # ([80, 500, 500]) context len
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        f_attn = W_PV @ xs @ softmax_attn_arg  # no add
+
+        # print("f_attn shape", f_attn.shape)
+
+        # 2-nd layer - identical add manually here for simplicity TODO: check in vit what is fed to next layer
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / self.rho
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+        f_attn1 = W_PV1 @ f_attn @ softmax_attn_arg1 # no add
+
+        out = f_attn1[
+            :, :, -1
+        ]  # take dim_n output result at last token, for all batches
+        return out
+    
+class TransformerModelV3noresOmitLast(TransformerModelV3):
+    """
+    See docstring TransformerModelV3
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__(context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        
+
+        W_KQ1 = self.W_KQ1
+        W_PV1 = self.W_PV1
+
+        xs_skip_last = xs[:, :, :-1]
+        attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ xs[:, :, [-1]] / self.rho #take last as they do in V2nores
+        # print("attn arg shape", attn_arg.shape)  # ([80, 500, 500]) context len
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        f_attn = W_PV @ xs_skip_last @ softmax_attn_arg  # no add
+
+        # print("f_attn shape", f_attn.shape)
+
+        # 2-nd layer - identical add manually here for simplicity TODO: check in vit what is fed to next layer
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / self.rho # TODO: I don't think the skip last affects this portion
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+        f_attn1 = W_PV1 @ f_attn @ softmax_attn_arg1 # no add
+
+        out = f_attn1[
+            :, :, -1
+        ]  # take dim_n output result at last token, for all batches
+        return out
+
 
 #TODO@DR add here my others
 MODEL_CLASS_FROM_STR = {
