@@ -246,7 +246,7 @@ class TransformerModelV1noresForceDiagAndOmitLast(nn.Module):
 
 class TransformerModelV11(nn.Module):
     """
-    Simplest model:
+    Simplest model 2 heads
     - no positional encoding is used
     - same as V1 but now softmax in place of `linear` self-attention
     """
@@ -315,7 +315,476 @@ class TransformerModelV11(nn.Module):
 
         out = output[:, :, -1]  # take dim_n output result at last token, for all batches
         return out
+    
+class TransformerModelV11SkipLast(nn.Module):
+    """
+    Simplest model 2 heads - like 11 but on omit last which learns so much better in V2
+    - no positional encoding is used
+    - same as V1 but now softmax in place of `linear` self-attention
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=2):
+        super().__init__()
+        assert n_layer == 1      # TODO implement...
+        assert n_head == 2       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
 
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+
+        self.rho = 1.0
+        self.num_heads = 2
+        self.head_dim = dim_input // 2
+
+        self.output = nn.Linear(context_length, context_length, bias=None)
+
+    def split_heads(self, x):
+        batch_size, seq_length, d_model = x.size()
+        return x.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
+    
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        xs_skip_last = xs[:, :, :-1]
+
+        xs_reshaped = xs.view(batchsz, self.num_heads, self.head_dim, n_tokens)
+        # xs_last_reshaped = xs[:, :, [-1]].view(batchsz, self.num_heads, self.head_dim, 1) #only the last
+        print("view shape of xs_last_reshaped", xs_reshaped .shape)
+        
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        xskq = torch.transpose(xs_skip_last, 1, 2) @ W_KQ
+
+        # print("view shape of xskq", xskq.shape)
+
+        xskq_split = self.split_heads(xskq)
+        # print("view shape of xskq_split", xskq_split.shape)
+
+        # print("xs_reshaped.transp ", torch.permute(xs_reshaped, (0, 1, 3, 2)).shape) #don't seem to need reshape here
+        # print("xs_reshaped non transp ", xs_reshaped.shape)
+
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.matmul(xskq_split, xs_reshaped) / self.rho #([1, 2, 500, 500]) # I am reshaping xs directly
+        # print("shape of attn_arg ", attn_arg.shape)
+
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        # print("shape of softmax_attn_arg ", softmax_attn_arg.shape)
+
+        wpvx = W_PV @ xs_skip_last 
+        
+        # print("shape of this wpvx ", wpvx.shape)
+        split_wpvq = wpvx.view(batchsz, self.num_heads, self.head_dim, n_tokens-1) #when skipped last
+
+        f_attn = split_wpvq @ softmax_attn_arg # no residual connection here
+        # print("shape of f_attn", f_attn.shape)
+        
+        f_attn_comb = f_attn.contiguous().view(batchsz, n_dim, n_tokens) 
+
+        output = self.output(f_attn_comb)
+
+        out = output[:, :, -1]  # take dim_n output result at last token, for all batches
+        return out
+    
+class TransformerModelV11SkipLastOneOnly(nn.Module):
+    """
+    Simplest model 2 heads - like 11 but on omit last which learns so much better in V2
+    - no positional encoding is used
+    - same as V1 but now softmax in place of `linear` self-attention
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=2):
+        super().__init__()
+        assert n_layer == 1      # TODO implement...
+        assert n_head == 2       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+
+        self.rho = 1.0
+        self.num_heads = 2
+        self.head_dim = dim_input // 2
+
+        self.output = nn.Linear(1, 1, bias=None) # when only the last token maintained
+
+    def split_heads(self, x):
+        batch_size, seq_length, d_model = x.size()
+        return x.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
+    
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        xs_skip_last = xs[:, :, :-1]
+
+        # xs_reshaped = xs.view(batchsz, self.num_heads, self.head_dim, n_tokens)
+        xs_last_reshaped = xs[:, :, [-1]].view(batchsz, self.num_heads, self.head_dim, 1) #only the last
+        print("view shape of xs_last_reshaped", xs_last_reshaped .shape)
+        
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        xskq = torch.transpose(xs_skip_last, 1, 2) @ W_KQ
+
+        # print("view shape of xskq", xskq.shape)
+
+        xskq_split = self.split_heads(xskq)
+        # print("view shape of xskq_split", xskq_split.shape)
+
+        # print("xs_reshaped.transp ", torch.permute(xs_reshaped, (0, 1, 3, 2)).shape) #don't seem to need reshape here
+        # print("xs_reshaped non transp ", xs_reshaped.shape)
+
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.matmul(xskq_split, xs_last_reshaped) / self.rho #([1, 2, 500, 500]) # I am reshaping xs directly
+        print("shape of attn_arg ", attn_arg.shape)
+
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        print("shape of softmax_attn_arg ", softmax_attn_arg.shape)
+
+        wpvx = W_PV @ xs_skip_last 
+        
+        # print("shape of this wpvx ", wpvx.shape)
+        split_wpvq = wpvx.view(batchsz, self.num_heads, self.head_dim, n_tokens-1) #when skipped last
+
+        f_attn = split_wpvq @ softmax_attn_arg # no residual connection here
+        print("shape of f_attn", f_attn.shape)
+        
+        f_attn_comb = f_attn.contiguous().view(batchsz, n_dim, 1) #can't be num tokens here
+
+        # output = self.output(f_attn_comb)
+
+        # out = output[:, :, -1]  # take dim_n output result at last token, for all batches
+        return f_attn_comb[:,:,-1]
+
+class TransformerModelV2(nn.Module):
+    """
+    Simplest model:
+    - no positional encoding is used
+    - same as V1 but now softmax in place of `linear` self-attention
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__()
+        assert n_layer == 1      # TODO implement...
+        assert n_head == 1       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = 1.0
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        f_attn = xs + W_PV @ xs @ softmax_attn_arg
+
+        out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches
+        return out
+    
+class TransformerModelV2Tied2(nn.Module):
+    """
+    Simplest model: with 2 layer
+    
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2      # TODO implement...
+        assert n_head == 1       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = 1.0
+
+        self.dyt = DynamicTanh(normalized_shape=dim_input)
+        self.linear = nn.Linear(context_length, context_length, bias=None)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        # layer 1
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+
+        f_attn = W_PV @ xs @ softmax_attn_arg
+        # f_attn = W_PV @ xs @ softmax_attn_arg
+
+        # try add in between; residual connections only make sense when multiple layers really
+        # original transf encoder layer: is multihead; add+norm; feed foreard; add + norm; then stack n of these layers
+
+        # so step by step
+        # f_attn = self.dyt(xs + f_attn)
+        f_attn = xs + f_attn #better with no dyt here
+
+        # then add + norm
+
+
+        # # add another layer- no residual connection; no linear in between; use the same matrices
+
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ @ f_attn / self.rho
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+
+        f_attn1 = W_PV @ f_attn @ softmax_attn_arg1
+
+        # add residual to f_attn1 as well
+        f_attn1 = self.dyt(f_attn1 + f_attn)
+
+        # output = self.linear(f_attn1)
+        # out = output[:, :, -1]  # take dim_n output result at last token, for all batches
+        out = f_attn1[:, :, -1]
+        return out
+    
+
+class TransformerModelV2Tied2_Skip(nn.Module):
+    """
+    Simplest model: with 2 layer - tied weights- use query sep
+    
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2      # TODO implement...
+        assert n_head == 1       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = 1.0
+
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        # layer 1
+        # xs_skip = xs[:, :, :-1]
+        # s = xs[:, :, [-1]]              #The skipping doesn't work on more than 1 layer / except at the last layer
+
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho #this should be now (499, 500)
+        # attn_arg = torch.transpose(xs_skip, 1, 2) @ W_KQ @ s / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1) #499, 500
+
+        f_attn = W_PV @ xs @ softmax_attn_arg #now this should be (16, 500) #yes this works, recovers diags
+
+        # print("what was xs shape and what is f_attn shape if use xs_skip transp and xs", f_attn.shape)
+
+        # but for two layers I cannot use s only because what would f_attn_skip be for next layer.
+
+        # # # add another layer- no residual connection; no linear in between; use the same matrices
+
+        # # now skip for layer 2
+        # f_attn_skip = f_attn[:, :, :-1]
+
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ @ f_attn / self.rho #keep full f_attn second to get last token
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+
+        f_attn1 = W_PV @ f_attn @ softmax_attn_arg1
+        # print("what is the shape of skip version f_attn1 (but full second f_attn)", f_attn1.shape) #[80, 16, 500] - carve out last token
+        
+        out = f_attn1[:, :, -1]
+
+        return out
+    
+class TransformerModelV2L2(nn.Module):
+    """
+    Simplest model: with 2 layer; not tied weights
+    
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2      # TODO implement...
+        assert n_head == 1       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_KQ1 = weight_matrix(dim_input, dim_input, mode='default')
+
+        self.W_PV1 = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = 1.0
+
+        # self.dyt = DynamicTanh(normalized_shape=dim_input)
+
+        # self.layernorm = nn.LayerNorm(dim_input, eps=1e-12)
+        # self.linear = nn.Linear(context_length, context_length, bias=None)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        W_KQ1 = self.W_KQ1
+        W_PV1 = self.W_PV1
+
+        # layer 1
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+
+        f_attn = W_PV @ xs @ softmax_attn_arg
+        # f_attn = W_PV @ xs @ softmax_attn_arg
+
+        # try add in between; residual connections only make sense when multiple layers really
+        # original transf encoder layer: is multihead; add+norm; feed foreard; add + norm; then stack n of these layers; then either transf-decoder or some 
+        # final mlp as decoder; and at first embed+pos embed
+        # omiting the feedforward (linear drop relu or similar) and pos embed and norm/dyt
+
+        # so step by step
+        # f_attn = self.dyt(xs + f_attn)
+        # f_attn = xs + f_attn # in 2-layer resid connection helps
+
+        # then add + norm
+
+
+        # # add another layer- no residual connection; no linear in between; use the same matrices
+
+        attn_arg1 = torch.transpose(f_attn, 1, 2) @ W_KQ1 @ f_attn / self.rho
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+
+        f_attn1 = W_PV1 @ f_attn @ softmax_attn_arg1
+
+        # add residual to f_attn1 as well
+        # f_attn1 = f_attn1 + f_attn # f_attn has xs resid connect as well÷
+
+        # output = self.linear(f_attn1)
+        # out = output[:, :, -1]  # take dim_n output result at last token, for all batches
+        # out = self.layernorm(f_attn1[:, :, -1])
+        # out = self.dyt(f_attn1[:, :, -1])
+        out = f_attn1[:, :, -1]
+        return out
+    
+class TransformerModelV2L2_Merged(nn.Module):
+    """
+    Simplest model: with 2 layer; not tied weights but simplified in mat algebra manipulations
+    
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+        assert n_layer == 2      # TODO implement...
+        assert n_head == 1       # TODO implement...
+        assert dim_attn is None  # TODO implement... for now we take dim_attn == dim_input
+        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode='default')
+        self.W_PVK1Q1PV = weight_matrix(dim_input, dim_input, mode='default')
+        # self.W_KQ1 = weight_matrix(dim_input, dim_input, mode='default')
+
+        self.W_P1V1PV = weight_matrix(dim_input, dim_input, mode='default')
+        self.rho = 1.0
+
+        # self.dyt = DynamicTanh(normalized_shape=dim_input)
+
+        # self.layernorm = nn.LayerNorm(dim_input, eps=1e-12)
+        # self.linear = nn.Linear(context_length, context_length, bias=None)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+
+        W_PVK1Q1PV =self.W_PVK1Q1PV
+        W_P1V1PV = self.W_P1V1PV
+
+        # layer 1
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+
+
+        # f_attn = W_PV @ xs @ softmax_attn_arg
+
+        # try add in between; residual connections only make sense when multiple layers really
+        # original transf encoder layer: is multihead; add+norm; feed foreard; add + norm; then stack n of these layers; then either transf-decoder or some 
+        # final mlp as decoder; and at first embed+pos embed
+        # omiting the feedforward (linear drop relu or similar) and pos embed and norm/dyt
+
+        # so step by step
+        # f_attn = self.dyt(xs + f_attn)
+        # f_attn = xs + f_attn # in 2-layer resid connection helps
+
+        # then add + norm
+
+
+        # # add another layer- no residual connection; no linear in between; use the same matrices
+
+        attn_arg1 = torch.transpose(softmax_attn_arg, 1, 2) @ torch.transpose(xs, 1, 2) @ W_PVK1Q1PV @ xs @ softmax_attn_arg / self.rho
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+
+        f_attn1 = W_P1V1PV @ xs @ softmax_attn_arg @ softmax_attn_arg1
+
+
+        # add residual to f_attn1 as well
+        # f_attn1 = f_attn1 + f_attn # f_attn has xs resid connect as well÷
+
+        # output = self.linear(f_attn1)
+        # out = output[:, :, -1]  # take dim_n output result at last token, for all batches
+        # out = self.layernorm(f_attn1[:, :, -1])
+        # out = self.dyt(f_attn1[:, :, -1])
+        out = f_attn1[:, :, -1]
+        return out
+    
 class TransformerModelV2(nn.Module):
     """
     Simplest model:
@@ -388,6 +857,8 @@ class TransformerModelV2noresOmitLast(TransformerModelV2):
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
         super().__init__(context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head)
 
+        self.dyt = DynamicTanh(normalized_shape=dim_input)
+
     def forward(self, xs):
         """
         xs is a sequence array of shape [batchsz, ndim, context_length]
@@ -405,11 +876,61 @@ class TransformerModelV2noresOmitLast(TransformerModelV2):
 
         # p7 Bartlett: "Softmax applied column-wise" (dim = data dim, not token dim)
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
-        f_attn = W_PV @ xs_skip_last @ softmax_attn_arg  # the residual stream term "+ xs" has been removed
+        f_attn =  W_PV @ xs_skip_last @ softmax_attn_arg  # the residual stream term "+ xs" has been removed
 
-        out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches
+        # print("shape of f_attn", f_attn.shape)
+        # print("shape of xs_skip_last", xs_skip_last.shape)
 
-        return out
+        # add residual connection TODO@DR modified this
+
+        # print("Shape of f_attn ", f_attn.shape)
+        # f_attn = self.dyt(f_attn + xs[:, :, [-1]]) 
+        # f_attn = f_attn + xs[:, :, [-1]]
+         
+        # out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches; this is now torch.Size([80, 16, 1])
+        # print("Shape of out ", out.shape)
+        return torch.squeeze(f_attn) #yes - this is the same as they do
+    
+class TransformerModelV2L2Skip(TransformerModelV2):
+    """
+    See docstring TransformerModelV2
+    """
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__(context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head)
+
+        self.dyt = DynamicTanh(normalized_shape=dim_input)
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        #rho = n_tokens
+
+        xs_skip_last = xs[:, :, :-1]
+        attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ xs[:, :, [-1]] / self.rho
+
+        # p7 Bartlett: "Softmax applied column-wise" (dim = data dim, not token dim)
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
+        f_attn =  W_PV @ xs_skip_last @ softmax_attn_arg  # the residual stream term "+ xs" has been removed
+
+        # print("shape of f_attn", f_attn.shape)
+        # print("shape of xs_skip_last", xs_skip_last.shape)
+
+        # add residual connection TODO@DR modified this
+
+        # print("Shape of f_attn ", f_attn.shape)
+        # f_attn = self.dyt(f_attn + xs[:, :, [-1]]) 
+        # f_attn = f_attn + xs[:, :, [-1]]
+         
+        # out = f_attn[:, :, -1]  # take dim_n output result at last token, for all batches; this is now torch.Size([80, 16, 1])
+        # print("Shape of out ", out.shape)
+        return torch.squeeze(f_attn) #yes - this is the same as they do
 
 class TransformerModelV3(nn.Module):
     """
@@ -1041,7 +1562,20 @@ MODEL_CLASS_FROM_STR = {
     'TransformerModelV9noresOmitLast':
         {'class': TransformerModelV9noresOmitLast, 'alias': 'TV9nrOL'},
     'TransformerModelV11':
-        {'class': TransformerModelV11, 'alias': 'TV11nrOL'}
+        {'class': TransformerModelV11, 'alias': 'TV11nr'},
+    'TransformerModelV11SkipLast':
+        {'class': TransformerModelV11SkipLast, 'alias': 'TV11nrOL'},
+    'TransformerModelV11SkipLastOneOnly':
+        {'class': TransformerModelV11SkipLastOneOnly, 'alias': 'TV11nrOLOO'},
+    'TransformerModelV2Tied2':
+         {'class': TransformerModelV2Tied2, 'alias': 'TV2T2'},
+    'TransformerModelV2L2':
+         {'class': TransformerModelV2L2, 'alias': 'TV2L2'},
+    'TransformerModelV2L2_Merged':
+         {'class': TransformerModelV2L2_Merged, 'alias': 'TV2L2M'},
+    'TransformerModelV2Tied2_Skip':
+        {'class': TransformerModelV2Tied2_Skip, 'alias': 'TV2T2S'},
+    
 }
 # define companion dict mapping alias to class string
 MODEL_CLASS_ALIAS_TO_STR = {v['alias']: k for k, v in MODEL_CLASS_FROM_STR.items()}
@@ -1191,4 +1725,3 @@ if __name__ == '__main__':
     print('\n\tfull_batch tensor.size:', full_batch.shape)
     out_from_full_batch = model(full_batch)
     print('\tout_from_full_batch tensor.size:', out_from_full_batch.shape)
-
