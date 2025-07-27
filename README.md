@@ -1,9 +1,9 @@
-WIP
+WIP - codebase under development
 
 ```
 python train_denoiser.py --config conf/linear_denoise.yaml
 ```
-from within src
+from within src. Though the environment needs to be set up first, instructions mostly in new_env_todo.yml .
 
 Modify args in yaml.
 
