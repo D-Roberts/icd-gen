@@ -1,6 +1,8 @@
 import os
 import sys
 
+from pathlib import Path
+
 from random import randint
 import uuid
 
@@ -17,6 +19,10 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import torch.optim as optim
+
+import comet_ml
+API_KEY = Path(".comet_api").read_text().strip()
+comet_ml.init(api_key=API_KEY)
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
