@@ -1,13 +1,16 @@
-
 import datetime
 import numpy as np
 
-import os 
-import pickle #must we? TODO: get rid of the pickle later
-import torch 
+import os
+import pickle  # must we? TODO: get rid of the pickle later
+import torch
+
 # keep these until I understand exactly how the vis works
 
-def run_subdir_setup(dir_runs, run_subfolder=None, timedir_override=None, minimal_mode=False):
+
+def run_subdir_setup(
+    dir_runs, run_subfolder=None, timedir_override=None, minimal_mode=False
+):
     """
     Create a new directory for the run, and save the model trajectory and dataset there
 
@@ -35,7 +38,9 @@ def run_subdir_setup(dir_runs, run_subfolder=None, timedir_override=None, minima
         if os.path.isabs(run_subfolder):
             dir_current_run = run_subfolder + os.sep + time_folder
         else:
-            dir_current_run = experiment_dir + os.sep + run_subfolder + os.sep + time_folder
+            dir_current_run = (
+                experiment_dir + os.sep + run_subfolder + os.sep + time_folder
+            )
 
     # make subfolders in the timestamped run directory:
     dir_checkpoints = os.path.join(dir_current_run, "model_checkpoints")
@@ -45,20 +50,28 @@ def run_subdir_setup(dir_runs, run_subfolder=None, timedir_override=None, minima
     if minimal_mode:
         dir_list = [dir_runs, dir_current_run]
     else:
-        dir_list = [dir_runs, dir_current_run, dir_checkpoints, dir_vis, dir_data_for_replot]
+        dir_list = [
+            dir_runs,
+            dir_current_run,
+            dir_checkpoints,
+            dir_vis,
+            dir_data_for_replot,
+        ]
     for dirs in dir_list:
         if not os.path.exists(dirs):
             os.makedirs(dirs)
 
     # io path storage to pass around
-    io_dict = {'dir_base': dir_current_run,
-               'dir_checkpoints': dir_checkpoints,
-               'dir_vis': dir_vis,
-               'dir_data_for_replot': dir_data_for_replot,
-               'runinfo': dir_current_run + os.sep + 'runinfo.txt'}
+    io_dict = {
+        "dir_base": dir_current_run,
+        "dir_checkpoints": dir_checkpoints,
+        "dir_vis": dir_vis,
+        "dir_data_for_replot": dir_data_for_replot,
+        "runinfo": dir_current_run + os.sep + "runinfo.txt",
+    }
 
     # make minimal run_info settings file with first line as the base output dir
-    runinfo_append(io_dict, ['dir_base, %s' % dir_current_run])
+    runinfo_append(io_dict, ["dir_base, %s" % dir_current_run])
 
     return io_dict
 
@@ -69,13 +82,13 @@ def runinfo_append(io_dict, info_list, multi=False):
     """
     # multi: list of list flag
     if multi:
-        with open(io_dict['runinfo'], 'a') as runinfo:
+        with open(io_dict["runinfo"], "a") as runinfo:
             for line in info_list:
-                runinfo.write('\n'.join(line))
+                runinfo.write("\n".join(line))
     else:
-        with open(io_dict['runinfo'], 'a') as runinfo:
-            runinfo.write('\n'.join(info_list))
-            runinfo.write('\n')
+        with open(io_dict["runinfo"], "a") as runinfo:
+            runinfo.write("\n".join(info_list))
+            runinfo.write("\n")
     return
 
 
@@ -125,4 +138,3 @@ def load_runinfo_from_rundir(dir_run, model_prefix=""):
         runinfo_dict[key] = (
             runinfo_dict[key] == "True"
         )  # if True, the bool val is True, else False
-

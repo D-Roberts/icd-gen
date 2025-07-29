@@ -18,7 +18,14 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import torch.optim as optim
 
-from baselines import loss_if_predict_zero, loss_if_predict_average, loss_if_predict_mostrecent, loss_if_predict_linalg, loss_if_predict_linalg_shrunken, theory_linear_expected_error
+from baselines import (
+    loss_if_predict_zero,
+    loss_if_predict_average,
+    loss_if_predict_mostrecent,
+    loss_if_predict_linalg,
+    loss_if_predict_linalg_shrunken,
+    theory_linear_expected_error,
+)
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
 from vis_utils import vis_weights_kq_pv
 
@@ -30,7 +37,6 @@ from models import (
     MODEL_CLASS_FROM_STR,
 )
 from util import run_subdir_setup
-
 
 
 torch.backends.cudnn.benchmark = True
@@ -92,7 +98,6 @@ class DatasetWrapper(Dataset):
     def plot(self):
         print("not implemented")
         return
-
 
 
 # Leave this as is from icl; see that I use the scheduler TODO@DR
@@ -175,7 +180,9 @@ def train(model, args):
         data_train_test_split_fncall = data_train_test_split_linear
 
         # specific to this case but used in function calls below
-        linear_sigma2_pure_context = args.DATAGEN_GLOBALS[datagen_choice]["sigma2_pure_context"]
+        linear_sigma2_pure_context = args.DATAGEN_GLOBALS[datagen_choice][
+            "sigma2_pure_context"
+        ]
         sigma2_pure_context = linear_sigma2_pure_context  # alias
 
         data_suffix = "case%s_s2z%.2f_s2n%.2f_ortho%d_origin%d_d-%s" % (
@@ -231,12 +238,10 @@ def train(model, args):
             "Warning - flag_save_dataset - 1000 samples with n=32 still gives 60 MB, relatively big)"
         )
 
-    
-
     # From the provided model class string, get the shorthand model name and the class definition
     nn_fpath = MODEL_CLASS_FROM_STR[nn_model]["alias"]
     nn_class = MODEL_CLASS_FROM_STR[nn_model]["class"]
-    
+
     opt_suffix = "adam"
 
     epochs = args.training["epochs"]
@@ -272,20 +277,23 @@ def train(model, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_lr)
 
     # Output settings for visualization after training
-    skip_PCA_heuristic_slow =  args.training["skip_PCA_heuristic_slow"]
+    skip_PCA_heuristic_slow = args.training["skip_PCA_heuristic_slow"]
 
     ################################################################################
     # Setup io dict
     ################################################################################
-    io_dict = run_subdir_setup(dir_runs=DIR_RUNS, run_subfolder=None, timedir_override=None, minimal_mode=False)
+    io_dict = run_subdir_setup(
+        dir_runs=DIR_RUNS, run_subfolder=None, timedir_override=None, minimal_mode=False
+    )
 
     if args.training["flag_save_dataset"]:
-        dataset_savez_fname = io_dict['dir_base'] + os.sep + 'training_dataset_split.npz'  # if none, do not save
+        dataset_savez_fname = (
+            io_dict["dir_base"] + os.sep + "training_dataset_split.npz"
+        )  # if none, do not save
         # datagen_kwargs['savez_fname'] = dataset_savez_fname
     else:
         dataset_savez_fname = None
         # datagen_kwargs['savez_fname'] = dataset_savez_fname
-
 
     # this is from icl
     state_path = os.path.join(DIR_RUNS, "state.pt")  # TODO@DR: not really sure where
@@ -309,36 +317,48 @@ def train(model, args):
         "in train denoiser, shape and device of x_train", x_train.shape, x_train.device
     )
 
-
     ################################################################################
     # Build or load data
     ################################################################################
-    restart_nn_instance=None 
-    restart_dataset=None
+    restart_nn_instance = None
+    restart_dataset = None
 
     if args.training["restart_dataset"] is not None:
-        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = restart_dataset
-        print('x_train.shape', x_train.shape)
+        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
+            restart_dataset
+        )
+        print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
         train_size = x_train.shape[0]
-        assert train_size == int(args.training["train_plus_test_size"] * (1 - test_ratio))  # sanity check
+        assert train_size == int(
+            args.training["train_plus_test_size"] * (1 - test_ratio)
+        )  # sanity check
 
         # fname suffix for io
-        data_suffix = 'RESTART-SAME-DATASET'  # appended to fname
+        data_suffix = "RESTART-SAME-DATASET"  # appended to fname
     else:
-        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = data_train_test_split_fncall(
-            **base_kwargs) #TODO@DR only change values through YAML; they have this datagen_kwarg dict update which is not clean code
-        print('x_train.shape', x_train.shape)
+        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
+            data_train_test_split_fncall(**base_kwargs)
+        )  # TODO@DR only change values through YAML; they have this datagen_kwarg dict update which is not clean code
+        print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
         train_size = x_train.shape[0]
-        print('train_size', train_size)
-        print('int(train_plus_test_size * (1 - test_ratio))', int(args.training["train_plus_test_size"] * (1 - test_ratio)))
-        assert train_size == int(args.training["train_plus_test_size"] * (1 - test_ratio))  # sanity check
+        print("train_size", train_size)
+        print(
+            "int(train_plus_test_size * (1 - test_ratio))",
+            int(args.training["train_plus_test_size"] * (1 - test_ratio)),
+        )
+        assert train_size == int(
+            args.training["train_plus_test_size"] * (1 - test_ratio)
+        )  # sanity check
 
-        data_suffix += '_tx%d_xpw%d_spx%d' % (
-            train_size, context_examples_per_W, samples_per_context_example)
+        data_suffix += "_tx%d_xpw%d_spx%d" % (
+            train_size,
+            context_examples_per_W,
+            samples_per_context_example,
+        )
 
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
@@ -398,9 +418,13 @@ def train(model, args):
     )
 
     # monitor the train error on the full test set every k batches (could be more/less than once per epoch)
-    train_full_mse_loss = report_dataset_loss(model, loss_func, train_loader, "train", device)
+    train_full_mse_loss = report_dataset_loss(
+        model, loss_func, train_loader, "train", device
+    )
     # monitor the test error on the full test set every k batches (could be more/less than once per epoch)
-    test_full_mse_loss = report_dataset_loss(model, loss_func, test_loader, "test", device)
+    test_full_mse_loss = report_dataset_loss(
+        model, loss_func, test_loader, "test", device
+    )
 
     curve_y_losstrain_epochs_avg = []  # will append to this each epoch
     curve_y_losstrain_batch = (
@@ -449,15 +473,13 @@ def train(model, args):
             # print("loss ", loss)
 
             # TODO: more detailed wandb - this logging is is not working ok
-            step_wand+=1
+            step_wand += 1
             wandb.log(
                 {
                     "batch_train_loss": loss,
                 },
                 step=step_wand,
             )
-            
-
 
             curve_y_losstrain_batch.append(loss)
 
@@ -479,7 +501,9 @@ def train(model, args):
                     count,
                 )
 
-                loss_test = report_dataset_loss(model, loss_func, test_loader, "test", device)
+                loss_test = report_dataset_loss(
+                    model, loss_func, test_loader, "test", device
+                )
                 curve_y_losstest_interval.append(loss_test)
 
                 loss_train = report_dataset_loss(
@@ -509,136 +533,174 @@ def train(model, args):
     # Save model
     ################################################################################
     # save a copy of final model using detailed fname label
-    model_path = io_dict['dir_base'] + os.sep + model_fname + '.pth'
+    model_path = io_dict["dir_base"] + os.sep + model_fname + ".pth"
     torch.save(model.state_dict(), model_path)
     # save a copy of final model as 'model_final.pth'
-    model_path = io_dict['dir_checkpoints'] + os.sep + 'model_final' + '.pth'
-    torch.save(model.state_dict(), io_dict['dir_checkpoints'] + os.sep + 'model_final' + '.pth')
-    print('\nModel checkpoint saved to', model_path)
+    model_path = io_dict["dir_checkpoints"] + os.sep + "model_final" + ".pth"
+    torch.save(
+        model.state_dict(), io_dict["dir_checkpoints"] + os.sep + "model_final" + ".pth"
+    )
+    print("\nModel checkpoint saved to", model_path)
 
-    train_loss_end = report_dataset_loss(model, loss_func, train_loader, "train", device)
+    train_loss_end = report_dataset_loss(
+        model, loss_func, train_loader, "train", device
+    )
     test_loss_end = report_dataset_loss(model, loss_func, test_loader, "test", device)
 
-    print('curve_x_losstrain_epochs_avg', curve_x_losstrain_epochs_avg)
-    print('curve_y_losstrain_epochs_avg', curve_y_losstrain_epochs_avg, '\n')
+    print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
+    print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
 
-    print('curve_x_losstrain_batch', curve_x_losstrain_batch)
-    print('curve_y_losstrain_batch', curve_y_losstrain_batch, '\n')
+    print("curve_x_losstrain_batch", curve_x_losstrain_batch)
+    print("curve_y_losstrain_batch", curve_y_losstrain_batch, "\n")
 
-    print('curve_x_lossrain_interval', curve_x_losstrain_interval)
-    print('curve_y_losstrain_interval', curve_y_losstrain_interval, '\n')
+    print("curve_x_lossrain_interval", curve_x_losstrain_interval)
+    print("curve_y_losstrain_interval", curve_y_losstrain_interval, "\n")
 
-    print('curve_x_losstest_interval', curve_x_losstest_interval)
-    print('curve_y_losstest_interval', curve_y_losstest_interval, '\n')
+    print("curve_x_losstest_interval", curve_x_losstest_interval)
+    print("curve_y_losstest_interval", curve_y_losstest_interval, "\n")
 
     # skip the saving of info to txt - I have the yaml dump TODO@DR add to that
     ################################################################################
     # Plot loss dynamics against simple benchmarks
     ################################################################################
-    
+
     loss_vals_dict = {
-        'loss_train_batch': dict(
+        "loss_train_batch": dict(
             x=curve_x_losstrain_batch,
             y=curve_y_losstrain_batch,
-            label='train (one batch)',
-            fname='curve_loss_train_batch',
-            pltkwargs=dict(linestyle='--', marker='o', color='b', markersize=4, markerfacecolor='None', alpha=0.3)),
-        'loss_train_epoch_avg': dict(
+            label="train (one batch)",
+            fname="curve_loss_train_batch",
+            pltkwargs=dict(
+                linestyle="--",
+                marker="o",
+                color="b",
+                markersize=4,
+                markerfacecolor="None",
+                alpha=0.3,
+            ),
+        ),
+        "loss_train_epoch_avg": dict(
             x=curve_x_losstrain_epochs_avg,
             y=curve_y_losstrain_epochs_avg,
-            label='train (epoch moving avg)',
-            fname='curve_loss_train_epoch_avg',
-            pltkwargs=dict(linestyle='--', marker='o', color='b', markersize=4)),
-        'loss_train_interval': dict(
+            label="train (epoch moving avg)",
+            fname="curve_loss_train_epoch_avg",
+            pltkwargs=dict(linestyle="--", marker="o", color="b", markersize=4),
+        ),
+        "loss_train_interval": dict(
             x=curve_x_losstrain_interval,
             y=curve_y_losstrain_interval,
-            label='train (full)',
-            fname='curve_loss_train_interval',
-            pltkwargs=dict(linestyle='-', marker='o', color='b')),
-        'loss_test_interval': dict(
+            label="train (full)",
+            fname="curve_loss_train_interval",
+            pltkwargs=dict(linestyle="-", marker="o", color="b"),
+        ),
+        "loss_test_interval": dict(
             x=curve_x_losstest_interval,
             y=curve_y_losstest_interval,
-            label='test (full)',
-            fname='curve_loss_test_interval',
-            pltkwargs=dict(linestyle='-', marker='o', color='r')),
+            label="test (full)",
+            fname="curve_loss_test_interval",
+            pltkwargs=dict(linestyle="-", marker="o", color="r"),
+        ),
     }
-    print('Compare to null performance and lin.alg. baselines:')
-    dumb_A_mse_on_train = loss_if_predict_zero(loss_func, train_loader, 'train')
-    dumb_A_mse_on_test = loss_if_predict_zero(loss_func, test_loader, 'test')
-    dumb_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, 'train')
-    dumb_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, 'test')
-    dumb_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, 'train')
-    dumb_C_mse_on_test = loss_if_predict_average(loss_func, test_loader, 'test')
+    print("Compare to null performance and lin.alg. baselines:")
+    dumb_A_mse_on_train = loss_if_predict_zero(loss_func, train_loader, "train")
+    dumb_A_mse_on_test = loss_if_predict_zero(loss_func, test_loader, "test")
+    dumb_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, "train")
+    dumb_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, "test")
+    dumb_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, "train")
+    dumb_C_mse_on_test = loss_if_predict_average(loss_func, test_loader, "test")
 
     # add core baselines to loss_vals_dict (will also add datagen-case-specific ones later)
-    loss_vals_dict['baselines'] = {
-        'loss_if_predict_zero': dict(
-            alias='dumb_A',
-            label=r'guess $0$',
+    loss_vals_dict["baselines"] = {
+        "loss_if_predict_zero": dict(
+            alias="dumb_A",
+            label=r"guess $0$",
             val_train=dumb_A_mse_on_train,
             val_test=dumb_A_mse_on_test,
-            pltkwargs=dict(color='grey')),
-        'loss_if_predict_mostrecent': dict(
-            alias='dumb_B',
-            label=r'guess $x_{k-1}$',
+            pltkwargs=dict(color="grey"),
+        ),
+        "loss_if_predict_mostrecent": dict(
+            alias="dumb_B",
+            label=r"guess $x_{k-1}$",
             val_train=dumb_B_mse_on_train,
             val_test=dumb_B_mse_on_test,
-            pltkwargs=dict(color='green')),
-        'loss_if_predict_average': dict(
-            alias='dumb_C',
-            label=r'guess mean',
+            pltkwargs=dict(color="green"),
+        ),
+        "loss_if_predict_average": dict(
+            alias="dumb_C",
+            label=r"guess mean",
             val_train=dumb_C_mse_on_train,
             val_test=dumb_C_mse_on_test,
-            pltkwargs=dict(color='orange')),
+            pltkwargs=dict(color="orange"),
+        ),
     }
-     # the following heuristics baselines are specific to case 0: Linear subspaces
+    # the following heuristics baselines are specific to case 0: Linear subspaces
     if datagen_choice == "linear":
         if not skip_PCA_heuristic_slow:
-            print('Warning: not skip_PCA_heuristic_slow; slow lin.alg. step...')
-            heuristic_mse_on_train = loss_if_predict_linalg(loss_func, train_loader, 'train')
-            heuristic_mse_on_test = loss_if_predict_linalg(loss_func, test_loader, 'test')
+            print("Warning: not skip_PCA_heuristic_slow; slow lin.alg. step...")
+            heuristic_mse_on_train = loss_if_predict_linalg(
+                loss_func, train_loader, "train"
+            )
+            heuristic_mse_on_test = loss_if_predict_linalg(
+                loss_func, test_loader, "test"
+            )
 
-            loss_vals_dict['baselines']['loss_if_predict_linalg'] = dict(
-                alias='heuristic_proj',
-                label=r'$P \tilde x$',
+            loss_vals_dict["baselines"]["loss_if_predict_linalg"] = dict(
+                alias="heuristic_proj",
+                label=r"$P \tilde x$",
                 val_train=heuristic_mse_on_train,
                 val_test=heuristic_mse_on_test,
-                pltkwargs=dict(color='black'))
+                pltkwargs=dict(color="black"),
+            )
 
             # also compute shrunken predictor
             # - we assume proper subspace through origin
             # - we assume it is iid gaussian ball corruption (not orthogonal to W)
-            if (style_origin_subspace) and (not style_corruption_orthog):  # we assume proper subspace through origin
-                heuristic_mse_shrunken_on_train = (
-                    loss_if_predict_linalg_shrunken(
-                        loss_func, train_loader, 'train', sigma2_pure_context, sigma2_corruption,
-                        style_origin_subspace=style_origin_subspace, style_corruption_orthog=style_corruption_orthog)
+            if (style_origin_subspace) and (
+                not style_corruption_orthog
+            ):  # we assume proper subspace through origin
+                heuristic_mse_shrunken_on_train = loss_if_predict_linalg_shrunken(
+                    loss_func,
+                    train_loader,
+                    "train",
+                    sigma2_pure_context,
+                    sigma2_corruption,
+                    style_origin_subspace=style_origin_subspace,
+                    style_corruption_orthog=style_corruption_orthog,
                 )
-                heuristic_mse_shrunken_on_test = (
-                    loss_if_predict_linalg_shrunken(
-                        loss_func, test_loader, 'test', sigma2_pure_context, sigma2_corruption,
-                        style_origin_subspace=style_origin_subspace, style_corruption_orthog=style_corruption_orthog)
+                heuristic_mse_shrunken_on_test = loss_if_predict_linalg_shrunken(
+                    loss_func,
+                    test_loader,
+                    "test",
+                    sigma2_pure_context,
+                    sigma2_corruption,
+                    style_origin_subspace=style_origin_subspace,
+                    style_corruption_orthog=style_corruption_orthog,
                 )
                 assert style_subspace_dimensions == "random"
                 dim_d_k = np.random.randint(
                     1, min(dim_n, context_len // 2), size=num_W_in_dataset
                 )
                 theory_expected_error_linalg_shrunken = theory_linear_expected_error(
-                    dim_n, dim_d_k, sigma2_corruption, linear_sigma2_pure_context) #style_subspace_dimensions is a string "random" TODO@DR not sure if correct
+                    dim_n, dim_d_k, sigma2_corruption, linear_sigma2_pure_context
+                )  # style_subspace_dimensions is a string "random" TODO@DR not sure if correct
 
-                loss_vals_dict['baselines']['loss_if_predict_linalg_shrunken'] = dict(
-                    alias='heuristic_proj_shrunken',
-                    label=r'$\gamma P \tilde x$',
+                loss_vals_dict["baselines"]["loss_if_predict_linalg_shrunken"] = dict(
+                    alias="heuristic_proj_shrunken",
+                    label=r"$\gamma P \tilde x$",
                     val_train=heuristic_mse_shrunken_on_train,
                     val_test=heuristic_mse_shrunken_on_test,
-                    pltkwargs=dict(color='mediumpurple'))
+                    pltkwargs=dict(color="mediumpurple"),
+                )
 
-                loss_vals_dict['baselines']['theory_expected_error_linalg_shrunken'] = dict(
-                    alias='theory_expected_error_linalg_shrunken',
-                    label=r'$\mathbb{E}[L(\theta^*)]$',
-                    val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
-                    val_test=theory_expected_error_linalg_shrunken,
-                    pltkwargs=dict(color='mediumpurple', linestyle=':'))
+                loss_vals_dict["baselines"]["theory_expected_error_linalg_shrunken"] = (
+                    dict(
+                        alias="theory_expected_error_linalg_shrunken",
+                        label=r"$\mathbb{E}[L(\theta^*)]$",
+                        val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
+                        val_test=theory_expected_error_linalg_shrunken,
+                        pltkwargs=dict(color="mediumpurple", linestyle=":"),
+                    )
+                )
 
     plt.plot(curve_y_losstrain_epochs_avg)
     plt.show()  # I can see epoch loss decreasing down to 0.7786882519721985 with 80 datapoints dim 32 context 500 linear 10 epoch
@@ -657,12 +719,21 @@ def train(model, args):
     #         step=i,
     #     )
 
+    return (
+        model,
+        model_fname,
+        io_dict,
+        loss_vals_dict,
+        train_loader,
+        test_loader,
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        train_data_subspaces,
+        test_data_subspaces,
+    )
 
-    
-
-    return (model, model_fname, io_dict, loss_vals_dict,
-     train_loader, test_loader, x_train, y_train, x_test, y_test,
-     train_data_subspaces, test_data_subspaces)
 
 def main(args):
 
@@ -689,19 +760,38 @@ def main(args):
 
     model.to(device)
     model.train()
-    (net, model_fname, io_dict, loss_vals_dict,
-     train_loader, test_loader, x_train, y_train, x_test, y_test,
-     train_data_subspaces, test_data_subspaces) = train(model, args)
-    
-    if args.training["nn_model"] not in ['TransformerModelQKVnores']:
+    (
+        net,
+        model_fname,
+        io_dict,
+        loss_vals_dict,
+        train_loader,
+        test_loader,
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        train_data_subspaces,
+        test_data_subspaces,
+    ) = train(model, args)
+
+    if args.training["nn_model"] not in ["TransformerModelQKVnores"]:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
-        if learned_W_KQ.size == 1:  # in this case we are training 1-param weights (scaled identity) - remake as arr
+        if (
+            learned_W_KQ.size == 1
+        ):  # in this case we are training 1-param weights (scaled identity) - remake as arr
             learned_W_KQ = learned_W_KQ * np.eye(args.training["dim_n"])
             learned_W_PV = learned_W_PV * np.eye(args.training["dim_n"])
 
-        vis_weights_kq_pv(learned_W_KQ, learned_W_PV, titlemod=r'$\theta$ final',
-                        dir_out=io_dict['dir_vis'], fname='weights_final', flag_show=True)
+        vis_weights_kq_pv(
+            learned_W_KQ,
+            learned_W_PV,
+            titlemod=r"$\theta$ final",
+            dir_out=io_dict["dir_vis"],
+            fname="weights_final",
+            flag_show=True,
+        )
 
 
 if __name__ == "__main__":

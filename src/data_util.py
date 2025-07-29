@@ -1,12 +1,18 @@
 import os
-import numpy as np 
+import numpy as np
 
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-from data_gen_denoise import gen_gaussian_data, gen_uniform_data, sample_from_subspace, proj_affine_subspace_estimator
+from data_gen_denoise import (
+    gen_gaussian_data,
+    gen_uniform_data,
+    sample_from_subspace,
+    proj_affine_subspace_estimator,
+)
+
 
 class DatasetWrapper(Dataset):
     """
@@ -66,7 +72,6 @@ def report_dataset_loss(
     if print_val:
         print("\t%s data loss: %.3e (batches=%d)" % (data_label, mse_loss, count))
     return mse_loss
-
 
 
 def data_train_test_split_util(
@@ -437,11 +442,12 @@ def data_train_test_split_linear(
 
     return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
 
+
 def reload_lossbaseline_dict(dir_replot):
-    with open(dir_replot + os.sep + 'loss_baselines.txt') as f:
+    with open(dir_replot + os.sep + "loss_baselines.txt") as f:
         loss_baselines_dict = {}
         lines = [a.strip() for a in f.readlines()]
         for lstr in lines:
-            a, b_str = lstr.split(',')
+            a, b_str = lstr.split(",")
             loss_baselines_dict[a] = float(b_str)
         return loss_baselines_dict

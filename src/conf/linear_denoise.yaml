@@ -55,7 +55,7 @@ training:
     context_examples_per_W: 1
     samples_per_context_example: 1
     full_loss_sample_interval: 4
-    flag_save_dataset: True #they aren't that big
+    flag_save_dataset: False #they aren't that big
     flag_vis_loss: True 
     flag_vis_weights: True 
     flag_vis_batch_perf: True 

@@ -2,9 +2,9 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 
-import os 
-import pickle #must we? TODO: get rid of the pickle later
-import torch 
+import os
+import pickle  # must we? TODO: get rid of the pickle later
+import torch
 
 
 # function to project onto d-dim affine subspace W(m, V) of R^n
@@ -25,9 +25,7 @@ def subspace_offset_and_basis_estimator(X_seq, eval_cutoff=1e-4, verbose_vis=Fal
     ndim, ncontext = X_seq.shape
     n_samples = ncontext  # alias
 
-    mu = np.expand_dims(
-        np.mean(X_seq, axis=1),
-        axis=1)
+    mu = np.expand_dims(np.mean(X_seq, axis=1), axis=1)
 
     # Manual PCA
     A = (X_seq - mu) @ (X_seq - mu).T / n_samples
@@ -48,19 +46,28 @@ def subspace_offset_and_basis_estimator(X_seq, eval_cutoff=1e-4, verbose_vis=Fal
 
     if verbose_vis:
         print(estimate_offset.shape, estimate_basis.shape)
-        print(len(indices_nonzero_evals), 'vs', eig_D.shape)
-        print('...')
+        print(len(indices_nonzero_evals), "vs", eig_D.shape)
+        print("...")
         plt.figure()
-        plt.plot(eig_D, '-ok', markersize=3)
-        plt.plot(indices_nonzero_evals, eig_D[indices_nonzero_evals], '-or', markersize=3)
-        plt.title('eigenvalues from PCA on X_seq (num above = %d)' % len(indices_nonzero_evals))
-        plt.xlabel(r'rank $i$'); plt.ylabel(r'$\lambda_i$')
-        plt.axhline(eval_cutoff, color='k', linestyle='--')
+        plt.plot(eig_D, "-ok", markersize=3)
+        plt.plot(
+            indices_nonzero_evals, eig_D[indices_nonzero_evals], "-or", markersize=3
+        )
+        plt.title(
+            "eigenvalues from PCA on X_seq (num above = %d)"
+            % len(indices_nonzero_evals)
+        )
+        plt.xlabel(r"rank $i$")
+        plt.ylabel(r"$\lambda_i$")
+        plt.axhline(eval_cutoff, color="k", linestyle="--")
         plt.show()
 
     return estimate_offset, estimate_basis, estimate_evals
 
-def proj_affine_subspace_estimator(X_seq, x_corrupt, eval_cutoff=1e-4, verbose_vis=False, return_basis=False):
+
+def proj_affine_subspace_estimator(
+    X_seq, x_corrupt, eval_cutoff=1e-4, verbose_vis=False, return_basis=False
+):
     """
     See transformer_A.ipynb
 
@@ -72,7 +79,9 @@ def proj_affine_subspace_estimator(X_seq, x_corrupt, eval_cutoff=1e-4, verbose_v
         together X_seq and x_corrupt compose the input sequence to the NN (x_corrupt is suffix, goal is to decorrupt)
     """
     # step 1
-    est_offset, est_basis, _ = subspace_offset_and_basis_estimator(X_seq, eval_cutoff=eval_cutoff, verbose_vis=verbose_vis)
+    est_offset, est_basis, _ = subspace_offset_and_basis_estimator(
+        X_seq, eval_cutoff=eval_cutoff, verbose_vis=verbose_vis
+    )
     # step 2
     projection_b_onto_W = proj_affine_subspace(est_offset, est_basis, x_corrupt)
 
@@ -84,6 +93,7 @@ def proj_affine_subspace_estimator(X_seq, x_corrupt, eval_cutoff=1e-4, verbose_v
         return projection_b_onto_W, est_basis
     else:
         return projection_b_onto_W
+
 
 def modified_bessel_firstkind_scipy(n, z):
     """
@@ -111,7 +121,9 @@ def bessel_ratio_np1_over_n(n, z):
     """
     use scipy ive for numeric stability; note the exp scalings cancel out
     """
-    return modified_bessel_firstkind_scipy_expscale(n+1, z) / modified_bessel_firstkind_scipy_expscale(n, z)
+    return modified_bessel_firstkind_scipy_expscale(
+        n + 1, z
+    ) / modified_bessel_firstkind_scipy_expscale(n, z)
 
 
 def bessel_ratio_subhalf_sub3half(n, z):
@@ -120,8 +132,9 @@ def bessel_ratio_subhalf_sub3half(n, z):
     - n = 2 case corresponds to sphere in R3, so I_{3/2} / I_{ 1/2}
     - n = 1 case corresponds to circle in R2, so I_{1/2} / I_{-1/2}
     """
-    return modified_bessel_firstkind_scipy_expscale(n - 0.5, z) / modified_bessel_firstkind_scipy_expscale(n - 1.5, z)
-
+    return modified_bessel_firstkind_scipy_expscale(
+        n - 0.5, z
+    ) / modified_bessel_firstkind_scipy_expscale(n - 1.5, z)
 
 
 def gen_uniform_data(size, rng=None):
