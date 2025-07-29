@@ -18,6 +18,8 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import torch.optim as optim
 
+from transformers.optimization import get_cosine_schedule_with_warmup
+
 from baselines import (
     loss_if_predict_zero,
     loss_if_predict_average,
@@ -29,13 +31,7 @@ from baselines import (
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
 from vis_utils import vis_weights_kq_pv
 
-from models import (
-    build_model,
-    TransformerModelV1nores,
-    TransformerModelV3,
-    TransformerModelV2nores,
-    MODEL_CLASS_FROM_STR,
-)
+from models import *
 from util import run_subdir_setup
 
 
@@ -69,7 +65,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
     if not os.path.exists(core_dir):
         os.mkdir(core_dir)
 
-# Put in data_gen
+# Put in data_gen TODO@DR ADD New Ones; Ditch the Clustering
 DATASET_CASES = {0: "Linear", 1: "Clustering", 2: "Manifold (sphere)"}
 
 
@@ -118,18 +114,7 @@ def train(model, args):
 
     if nn_model is None:
         # select a model class:
-        # V1 models (linear self-attention)
-        #   - TransformerModelV1
-        #   - TransformerModelV1nores
-        #   - TransformerModelV1noresForceDiag
-        #   - TransformerModelV1noresOmitLast
-        #   - TransformerModelV1noresForceDiagAndOmitLast
-        # V2 models (softmax self-attention)
-        #   - TransformerModelV2
-        #   - TransformerModelV2nores
-        #   - TransformerModelV2noresOmitLast
         nn_model = "TransformerModelV1noresOmitLast"
-        print("warning: defaulting nn_model=None to", nn_model)
 
     if args.training["seed_torch"] is not None:
         torch.manual_seed(args.training["seed_torch"])
@@ -250,9 +235,7 @@ def train(model, args):
     full_loss_sample_interval = args.training["full_loss_sample_interval"]
     batch_size = args.training["batch_size"]
 
-    optimizer_choice = args.training[
-        "optimizer_choice"
-    ]  # sgd or adam (TODO: DR adamw - get from smart or sit)
+    optimizer_choice = args.training["optimizer_choice"]  # DR: just one.
 
     model_fname = "%s_L%d_n%d_e%d_%s_%s" % (
         nn_fpath,
@@ -263,18 +246,21 @@ def train(model, args):
         opt_suffix,
     )  # used as specialized label for model settings and run
 
-    if optimizer_choice == "sgd":
+    if optimizer_choice == "adamw":
         optimizer_lr = args.training["learning_rate"]  # 0.01  # 0.5
-        # optimizer_lr = 80*0.1  #1.  400 epochs for spheres case with original params
-        # scheduler_kwargs = None
-        scheduler_kwargs = dict(
-            milestones=[0.8 * int(epochs), 0.9 * int(epochs)], gamma=0.1
-        )  # mult by gamma each milestone
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=optimizer_lr,
+            betas=(
+                0.9,
+                0.98,
+            ),  # DR: don't focus on all tunables here like the betas and the eps
+            eps=1e-8,
+            weight_decay=args.training["wd"],
+        )
     else:
         assert optimizer_choice == "adam"
         optimizer_lr = args.training["learning_rate"]  # default: 1e-2
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_lr)
 
     # Output settings for visualization after training
     skip_PCA_heuristic_slow = args.training["skip_PCA_heuristic_slow"]
@@ -340,7 +326,8 @@ def train(model, args):
     else:
         x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
             data_train_test_split_fncall(**base_kwargs)
-        )  # TODO@DR only change values through YAML; they have this datagen_kwarg dict update which is not clean code
+        )
+
         print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
@@ -368,22 +355,15 @@ def train(model, args):
 
     # I'm not using sgd with momentum
 
-    if args.training["scheduler_kwargs"] == "cosine":  # TODO@DR
-        pass  # TODO@DR better
-    elif args.training["scheduler_kwargs"] == "multistep":
-        scheduler = optim.lr_scheduler.MultiStepLR(
-            optimizer,
-            milestones=args.training["scheduler_kwargs"]["milestones"],
-            gamma=args.training["scheduler_kwargs"]["gamma"],
-        )
-        opt_suffix = opt_suffix + "_sched"  # appended to fname
-        runinfo_optimizer_lines.append(
-            "\tscheduler, %s" % args.training["scheduler_kwargs"]
-        )
+    if args.training["scheduler_kwargs"] == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer, 10, epochs * train_size
+        )  # TODO@DR put warmup steps in yaml config; ditch the other schedules - either cosine or None
+
     else:
         scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer, milestones=[epochs + 1], gamma=1.0
-        )  # dummy scheduler, no effect
+        )  # so this should be None
 
     nwork = 0
     train_loader = DataLoader(
@@ -441,7 +421,6 @@ def train(model, args):
     period_save_weights = args.training["period_save_weights"]
     count = 1
 
-    step_wand = 0
     for epoch in range(epochs):
 
         if epoch % period_save_weights == 0:
@@ -449,7 +428,7 @@ def train(model, args):
             torch.save(
                 model.state_dict(),
                 os.path.join(DIR_RUNS, f"model_{period_save_weights}.pt"),
-            )  # TODO: set their namings
+            )
             # torch.save(model.state_dict(), model_path)
 
         running_loss_epoch = 0.0
@@ -471,15 +450,6 @@ def train(model, args):
                 model, inputs.to(device), targets.to(device), optimizer, loss_func
             )
             # print("loss ", loss)
-
-            # TODO: more detailed wandb - this logging is is not working ok
-            step_wand += 1
-            wandb.log(
-                {
-                    "batch_train_loss": loss,
-                },
-                step=step_wand,
-            )
 
             curve_y_losstrain_batch.append(loss)
 
@@ -515,14 +485,8 @@ def train(model, args):
 
             count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
-            # wandb.log(
-            #     {
-            #         "epoch_train_loss": running_loss_epoch,
-            #     },
-            #     step=epoch,
-            # )
 
-        scheduler.step()  # step the learning rate scheduler
+        scheduler.step()  # step the learning rate sschedulecheduler
         print("\tlast LR:", scheduler.get_last_lr())
         print("end epoch:", epoch, "====================")
         curve_y_losstrain_epochs_avg.append(running_loss_epoch / running_batch_counter)
@@ -728,7 +692,7 @@ def main(args):
         model = build_model(args.model)
     else:
         # model = TransformerModelV1nores(args.training["context_len"], args.training["dim_n"]) #this seems to fit the best for the default
-        model = TransformerModelV2nores(
+        model = TransformerModelV1noresOmitLast(
             args.training["context_len"], args.training["dim_n"]
         )
         # model = TransformerModelV3(
