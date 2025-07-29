@@ -626,7 +626,7 @@ def train(model, args):
             pltkwargs=dict(color="green"),
         ),
         "loss_if_predict_average": dict(
-            alias="dumb_C",  #TODO@DR: change names; keep the most recent and average as simple predictors, together with the one-layer linearized 
+            alias="dumb_C",  # TODO@DR: change names; keep the most recent and average as simple predictors, together with the one-layer linearized
             # softmax
             label=r"guess mean",
             val_train=dumb_C_mse_on_train,
@@ -706,8 +706,6 @@ def train(model, args):
     plt.plot(curve_y_losstrain_epochs_avg)
     plt.show()  # I can see epoch loss decreasing down to 0.7786882519721985 with 80 datapoints dim 32 context 500 linear 10 epoch
 
-
-
     return (
         model,
         model_fname,
@@ -725,7 +723,6 @@ def train(model, args):
 
 
 def main(args):
-
 
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)

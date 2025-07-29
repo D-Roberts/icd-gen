@@ -60,9 +60,9 @@ def build_model(conf):
 
     return model
 
-
     models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]
     return models
+
 
 # this is from icl stfd code to work with the HuggingFace TODO@DR Note that if I want to strip the model of more things,
 # there are more in the HF config. But at a certain point i'll have to take the clone down and hack into it again
@@ -94,17 +94,18 @@ class TransformerModel(nn.Module):
 
         self._read_out = nn.Linear(n_embd, 1)
 
-
     def forward(self, xs, inds=None):
         if inds is None:
             inds = torch.arange(xs.shape[1])
         else:
             inds = torch.tensor(inds)
-        
+
         embeds = self._read_in(xs)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
         prediction = self._read_out(output)
-        return prediction[:, ::2, 0][:, inds]  # predict only on xs TODO@DR: change this for the input shape in the icd currently
+        return prediction[:, ::2, 0][
+            :, inds
+        ]  # predict only on xs TODO@DR: change this for the input shape in the icd currently
 
 
 # TODO@DR: This will be exactly the baseline from ic-denoiser paper
@@ -149,7 +150,6 @@ class TransformerModelV1(nn.Module):
             :, :, -1
         ]  # take dim_n output result at last token, for all batches
         return out
-
 
 
 class TransformerModelV1noresOmitLast(TransformerModelV1):
@@ -229,7 +229,6 @@ class TransformerModelV2(nn.Module):
         return out
 
 
-
 class TransformerModelV2noresOmitLast(TransformerModelV2):
     """
     See docstring TransformerModelV2
@@ -270,8 +269,8 @@ class TransformerModelV2noresOmitLast(TransformerModelV2):
         return out
 
 
-
 # TODO@DR add here my others
+
 
 class DynamicTanh(nn.Module):
     def __init__(self, normalized_shape=16, channels_last=True, alpha_init_value=0.5):
@@ -294,7 +293,6 @@ class DynamicTanh(nn.Module):
 
     def extra_repr(self):
         return f"normalized_shape={self.normalized_shape}, alpha_init_value={self.alpha_init_value}, channels_last={self.channels_last}"
-
 
 
 class TransformerModelV11(nn.Module):
@@ -553,7 +551,6 @@ class TransformerModelV11SkipLastOneOnly(nn.Module):
 
         # out = output[:, :, -1]  # take dim_n output result at last token, for all batches
         return f_attn_comb[:, :, -1]
-    
 
 
 class TransformerModelV2Tied2(nn.Module):
@@ -852,6 +849,7 @@ class TransformerModelV2L2_Merged(nn.Module):
         # out = self.dyt(f_attn1[:, :, -1])
         out = f_attn1[:, :, -1]
         return out
+
 
 class TransformerModelV2L2Skip(TransformerModelV2):
     """
@@ -1476,7 +1474,3 @@ MODEL_CLASS_FROM_STR = {
 }
 # define companion dict mapping alias to class string
 MODEL_CLASS_ALIAS_TO_STR = {v["alias"]: k for k, v in MODEL_CLASS_FROM_STR.items()}
-
-
-
-
