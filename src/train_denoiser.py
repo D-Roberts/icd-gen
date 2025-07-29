@@ -626,7 +626,8 @@ def train(model, args):
             pltkwargs=dict(color="green"),
         ),
         "loss_if_predict_average": dict(
-            alias="dumb_C",
+            alias="dumb_C",  #TODO@DR: change names; keep the most recent and average as simple predictors, together with the one-layer linearized 
+            # softmax
             label=r"guess mean",
             val_train=dumb_C_mse_on_train,
             val_test=dumb_C_mse_on_test,
@@ -705,19 +706,7 @@ def train(model, args):
     plt.plot(curve_y_losstrain_epochs_avg)
     plt.show()  # I can see epoch loss decreasing down to 0.7786882519721985 with 80 datapoints dim 32 context 500 linear 10 epoch
 
-    # if i % args.wandb["log_every_steps"] == 0 and not args.test_run: TODO@add more plots to wandb
-    #     wandb.log(
-    #         {
-    #             "overall_loss": loss,
-    #             "excess_loss": loss / baseline_loss,
-    #             "pointwise/loss": dict(
-    #                 zip(point_wise_tags, point_wise_loss.cpu().numpy())
-    #             ),
-    #             "n_points": curriculum.n_points,
-    #             "n_dims": curriculum.n_dims_truncated,
-    #         },
-    #         step=i,
-    #     )
+
 
     return (
         model,
@@ -737,15 +726,6 @@ def train(model, args):
 
 def main(args):
 
-    wandb.init(
-        dir=DIR_RUNS,
-        project=args.wandb["project"],
-        entity=args.wandb["entity"],
-        config=args.__dict__,
-        notes=args.wandb["notes"],
-        name=args.wandb["name"],
-        resume=True,
-    )
 
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
