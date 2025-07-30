@@ -43,7 +43,7 @@ training:
     optimizer_choice: adamw # DR: only one choice bc if no wd basically adam
     wd: 0.0 # weight decay in adamw
     scheduler_kwargs:
-        choice: # cosine or None
+        choice: cosine # cosine or None
         warmup: 1 # num warmup steps for cosine scheduler
     restart_nn_instance: #instance of a sequence model class (e.g. TransformerModelV1)
     restart_dataset: #(None) or 6-tuple (X_train, y_train, X_test, y_test, train_dict, test_dict) for dataset
@@ -58,7 +58,7 @@ training:
     full_loss_sample_interval: 4
     flag_save_dataset: False
     flag_vis_loss: False
-    flag_vis_weights: False #DR: they get logged in Comet image tab
+    flag_vis_weights: False 
     flag_vis_batch_perf: False
     test_ratio: 0.1
     nwork: 0

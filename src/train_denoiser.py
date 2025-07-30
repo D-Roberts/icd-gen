@@ -244,8 +244,6 @@ def train(model, args):
     full_loss_sample_interval = args.training["full_loss_sample_interval"]
     batch_size = args.training["batch_size"]
 
-    args.training["optimizer_choice"]  # DR: just one.
-
     model_fname = "%s_L%d_n%d_e%d_%s_%s" % (
         nn_fpath,
         context_len,
@@ -293,8 +291,6 @@ def train(model, args):
         state = torch.load(state_path)
         model.load_state_dict(state["model_state_dict"])
         optimizer.load_state_dict(state["optimizer_state_dict"])
-
-    # pbar = tqdm(range(starting_step, args.training["train_steps"])) TODO: put this back later
 
     (
         x_train,
@@ -374,6 +370,9 @@ def train(model, args):
     if args.training["scheduler_kwargs"]["choice"] == "cosine":
         scheduler = get_cosine_schedule_with_warmup(
             optimizer, args.training["scheduler_kwargs"]["warmup"], epochs * train_size
+        )
+        print(
+            "what is the warmup##########", args.training["scheduler_kwargs"]["warmup"]
         )
 
     nwork = 0
@@ -487,20 +486,11 @@ def train(model, args):
                     {"interval test loss": loss_test}, step=running_batch_counter
                 )
 
-                # loss_train = report_dataset_loss(
-                #     model, loss_func, train_loader, "train", device
-                # )
-                # curve_y_losstrain_interval.append(loss_train)
-
-                # running_loss_mesoscale = 0.0
-
-            # count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
             exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
 
-        if args.training["scheduler_kwargs"] == "cosine":
+        if args.training["scheduler_kwargs"]["choice"] == "cosine":
             scheduler.step()  # step the learning rate; if not cosine then no scheduler
-
             print("\tlast LR:", scheduler.get_last_lr())
         print("end epoch:", epoch, "====================")
 
@@ -529,12 +519,6 @@ def train(model, args):
 
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
-
-    # print("curve_x_losstrain_batch", curve_x_losstrain_batch)
-    # print("curve_y_losstrain_batch", curve_y_losstrain_batch, "\n")
-
-    # print("curve_x_lossrain_interval", curve_x_losstrain_interval)
-    # print("curve_y_losstrain_interval", curve_y_losstrain_interval, "\n")
 
     print("curve_x_losstest_interval", curve_x_losstest_interval)
     print("curve_y_losstest_interval", curve_y_losstest_interval, "\n")
@@ -658,7 +642,7 @@ def main(args):
         test_data_subspaces,
     ) = train(model, args)
 
-    if args.training["nn_model"] not in ["TransformerModelQKVnores"]:
+    if args.model["family"] not in {"gpt2"}:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
         if (
@@ -717,16 +701,6 @@ if __name__ == "__main__":
             parser.set_defaults(**config)
         args = parser.parse_args()  # Reload arguments to apply YAML values
 
-    assert args.model["family"] in [
-        "gpt2",
-        "1linearT1H",
-        "1softmaxT1H",
-        "2softmaxT1H",
-        "2softmaxTres",
-        "1softmaxT2H",
-        "1linearT2H",
-        "tanhT",
-    ]
     print(f"Running with: {args}")
 
     with open(os.path.join(DIR_OUT, "config.yaml"), "w") as yaml_file:
