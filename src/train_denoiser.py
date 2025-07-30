@@ -3,16 +3,11 @@ import sys
 
 from pathlib import Path
 
-from random import randint
-import uuid
 
 import argparse
-import wandb
-from tqdm import tqdm
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import softmax as scipy_softmax
 
 import comet_ml
 
@@ -20,12 +15,19 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
-import torch.optim as optim
 
 API_KEY = Path(".comet_api").read_text().strip()
 
 comet_ml.login()
-#comet_ml.init(api_key=API_KEY) #will deprecate
+# comet_ml.init(api_key=API_KEY) #will deprecate
+workspace = Path(".comet_workspace").read_text().strip()
+
+exp = comet_ml.Experiment(
+    api_key=API_KEY,
+    project_name="icd-gen",
+    workspace=workspace,
+    auto_metric_logging=True,  # default
+)
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
@@ -104,6 +106,7 @@ class DatasetWrapper(Dataset):
         print("not implemented")
         return
 
+
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
@@ -116,7 +119,6 @@ def train_step(model, xs, ys, optimizer, loss_func):
 
 
 def train(model, args):
-
     nn_model = args.training["nn_model"]
 
     if nn_model is None:
@@ -141,7 +143,7 @@ def train(model, args):
     assert args.DATAGEN_GLOBALS[datagen_choice]["style_origin_subspace"] is True
 
     ###datagen_choice = 1   # {0, 1, 2} -> {linear, clusters, manifold}
-    datagen_label = ["linear"][0]
+    ["linear"][0]
 
     base_kwargs = dict(
         context_len=args.training["context_len"],
@@ -200,7 +202,7 @@ def train(model, args):
         "style_subspace_dimensions"
     ]  # int or 'random' (or just 'full' in clustering case)
 
-    """ HERE - linear: How many samples per in-context subspace? - We use option (A) (explained below) throughout 
+    """ HERE - linear: How many samples per in-context subspace? - We use option (A) (explained below) throughout
     # (X, y) samples style A
     num_W_in_dataset = train_plus_test_size
     context_examples_per_W = 1
@@ -220,7 +222,7 @@ def train(model, args):
     test_ratio = args.training[
         "test_ratio"
     ]  # 0.2 means 1000 -> 800, 200 samples for train/test
-    seed_dataset = args.data["datagen_seed"]
+    args.data["datagen_seed"]
     ################################################################################
     # Model ID string
     ################################################################################
@@ -232,9 +234,9 @@ def train(model, args):
 
     # From the provided model class string, get the shorthand model name and the class definition
     nn_fpath = MODEL_CLASS_FROM_STR[nn_model]["alias"]
-    nn_class = MODEL_CLASS_FROM_STR[nn_model]["class"]
+    MODEL_CLASS_FROM_STR[nn_model]["class"]
 
-    opt_suffix = "adam"
+    opt_suffix = "adamw"
 
     epochs = args.training["epochs"]
     context_len = args.training["context_len"]
@@ -242,7 +244,7 @@ def train(model, args):
     full_loss_sample_interval = args.training["full_loss_sample_interval"]
     batch_size = args.training["batch_size"]
 
-    optimizer_choice = args.training["optimizer_choice"]  # DR: just one.
+    args.training["optimizer_choice"]  # DR: just one.
 
     model_fname = "%s_L%d_n%d_e%d_%s_%s" % (
         nn_fpath,
@@ -253,21 +255,17 @@ def train(model, args):
         opt_suffix,
     )  # used as specialized label for model settings and run
 
-    if optimizer_choice == "adamw":
-        optimizer_lr = args.training["learning_rate"]  # 0.01  # 0.5
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=optimizer_lr,
-            betas=(
-                0.9,
-                0.98,
-            ),  # DR: don't focus on all tunables here like the betas and the eps
-            eps=1e-8,
-            weight_decay=args.training["wd"],
-        )
-    else:
-        assert optimizer_choice == "adam"
-        optimizer_lr = args.training["learning_rate"]  # default: 1e-2
+    optimizer_lr = args.training["learning_rate"]  # 0.01  # 0.5
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=optimizer_lr,
+        betas=(
+            0.9,
+            0.98,
+        ),  # DR: don't focus on all tunables here like the betas and the eps
+        eps=1e-8,
+        weight_decay=args.training["wd"],
+    )
 
     # Output settings for visualization after training
     skip_PCA_heuristic_slow = args.training["skip_PCA_heuristic_slow"]
@@ -280,12 +278,12 @@ def train(model, args):
     )
 
     if args.training["flag_save_dataset"]:
-        dataset_savez_fname = (
+        (
             io_dict["dir_base"] + os.sep + "training_dataset_split.npz"
         )  # if none, do not save
         # datagen_kwargs['savez_fname'] = dataset_savez_fname
     else:
-        dataset_savez_fname = None
+        pass
         # datagen_kwargs['savez_fname'] = dataset_savez_fname
 
     # this is from icl
@@ -297,13 +295,16 @@ def train(model, args):
 
     # pbar = tqdm(range(starting_step, args.training["train_steps"])) TODO: put this back later
 
-    x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
-        data_train_test_split_linear(
-            **base_kwargs,
-            sigma2_pure_context=args.DATAGEN_GLOBALS[datagen_choice][
-                "sigma2_pure_context"
-            ],
-        )
+    (
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        train_data_subspaces,
+        test_data_subspaces,
+    ) = data_train_test_split_linear(
+        **base_kwargs,
+        sigma2_pure_context=args.DATAGEN_GLOBALS[datagen_choice]["sigma2_pure_context"],
     )
 
     # print(
@@ -313,13 +314,17 @@ def train(model, args):
     ################################################################################
     # Build or load data
     ################################################################################
-    restart_nn_instance = None
     restart_dataset = None
 
     if args.training["restart_dataset"] is not None:
-        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
-            restart_dataset
-        )
+        (
+            x_train,
+            y_train,
+            x_test,
+            y_test,
+            train_data_subspaces,
+            test_data_subspaces,
+        ) = restart_dataset
         # print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
@@ -329,11 +334,16 @@ def train(model, args):
         )  # sanity check
 
         # fname suffix for io
-        data_suffix = "RESTART-SAME-DATASET"  # appended to fname 
+        data_suffix = "RESTART-SAME-DATASET"  # appended to fname
     else:
-        x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
-            data_train_test_split_fncall(**base_kwargs)
-        )
+        (
+            x_train,
+            y_train,
+            x_test,
+            y_test,
+            train_data_subspaces,
+            test_data_subspaces,
+        ) = data_train_test_split_fncall(**base_kwargs)
 
         # print("x_train.shape", x_train.shape)
 
@@ -357,22 +367,15 @@ def train(model, args):
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
 
-    runinfo_optimizer_lines = ["\toptimizer_lr, %.2e" % optimizer_lr]
+    ["\toptimizer_lr, %.2e" % optimizer_lr]
     opt_suffix = "adamw%.1e" % optimizer_lr  # appended to fname
 
-
-    if args.training["scheduler_kwargs"] == "cosine":
+    if args.training["scheduler_kwargs"]["choice"] == "cosine":
         scheduler = get_cosine_schedule_with_warmup(
-            optimizer, args.training["warmup"], epochs * train_size
-        )  
-        print("my learning rate is", args.training["warmup"])
+            optimizer, args.training["scheduler_kwargs"]["warmup"], epochs * train_size
+        )
 
-    else:
-        scheduler = optim.lr_scheduler.MultiStepLR(
-            optimizer, milestones=[epochs + 1], gamma=1.0
-        )  # so this should be None
-
-    nwork = 0 
+    nwork = 0
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork
     )
@@ -429,7 +432,6 @@ def train(model, args):
     count = 1
 
     for epoch in range(epochs):
-
         if epoch % period_save_weights == 0:
             # model_path = io_dict['dir_checkpoints'] + os.sep + 'model_e%d' % epoch + '.pth'
             torch.save(
@@ -445,18 +447,16 @@ def train(model, args):
 
         for i, data in enumerate(train_loader, 0):
             inputs, targets = data
-            print(
-                "inputs shape and device", inputs.shape, inputs.device
-            )  # (batch size, x token dimension, context len)
-            print(
-                "targets shape and device", targets.shape, targets.device
-            )  # (batch size, n dim of last token)
+            # print(
+            #     "inputs shape and device", inputs.shape, inputs.device
+            # )  # (batch size, x token dimension, context len)
+            # print(
+            #     "targets shape and device", targets.shape, targets.device
+            # )  # (batch size, n dim of last token)
 
-            # train step from icl
             loss, output = train_step(
                 model, inputs.to(device), targets.to(device), optimizer, loss_func
             )
-            # print("loss ", loss)
 
             curve_y_losstrain_batch.append(loss)
 
@@ -492,12 +492,17 @@ def train(model, args):
 
             count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
+            exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
 
-        scheduler.step()  # step the learning rate sschedulecheduler
+        if args.training["scheduler_kwargs"] == "cosine":
+            scheduler.step()  # step the learning rate; if not cosine then no scheduler
+
         print("\tlast LR:", scheduler.get_last_lr())
         print("end epoch:", epoch, "====================")
-        curve_y_losstrain_epochs_avg.append(running_loss_epoch / running_batch_counter)
+        ep_loss = running_loss_epoch / running_batch_counter
+        curve_y_losstrain_epochs_avg.append(ep_loss)  # DR: keep for paper-like vis
 
+        exp.log_metrics({"epoch avg train loss": ep_loss}, epoch=epoch)
 
     print("Finished Training")
 
@@ -514,10 +519,8 @@ def train(model, args):
     )
     print("\nModel checkpoint saved to", model_path)
 
-    train_loss_end = report_dataset_loss(
-        model, loss_func, train_loader, "train", device
-    )
-    test_loss_end = report_dataset_loss(model, loss_func, test_loader, "test", device)
+    report_dataset_loss(model, loss_func, train_loader, "train", device)
+    report_dataset_loss(model, loss_func, test_loader, "test", device)
 
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
@@ -665,14 +668,14 @@ def train(model, args):
                     pltkwargs=dict(color="mediumpurple"),
                 )
 
-                loss_vals_dict["baselines"]["theory_expected_error_linalg_shrunken"] = (
-                    dict(
-                        alias="theory_expected_error_linalg_shrunken",
-                        label=r"$\mathbb{E}[L(\theta^*)]$",
-                        val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
-                        val_test=theory_expected_error_linalg_shrunken,
-                        pltkwargs=dict(color="mediumpurple", linestyle=":"),
-                    )
+                loss_vals_dict["baselines"][
+                    "theory_expected_error_linalg_shrunken"
+                ] = dict(
+                    alias="theory_expected_error_linalg_shrunken",
+                    label=r"$\mathbb{E}[L(\theta^*)]$",
+                    val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
+                    val_test=theory_expected_error_linalg_shrunken,
+                    pltkwargs=dict(color="mediumpurple", linestyle=":"),
                 )
 
     plt.plot(curve_y_losstrain_epochs_avg)
@@ -695,8 +698,6 @@ def train(model, args):
 
 
 def main(args):
-
-
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
     else:
@@ -704,7 +705,6 @@ def main(args):
         model = TransformerModelV1noresOmitLast(
             args.training["context_len"], args.training["dim_n"]
         )
-        
 
     model.to(device)
     model.train()
@@ -722,7 +722,6 @@ def main(args):
         train_data_subspaces,
         test_data_subspaces,
     ) = train(model, args)
-
 
     if args.training["nn_model"] not in ["TransformerModelQKVnores"]:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
@@ -744,15 +743,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-
-    workspace = Path(".comet_workspace").read_text().strip()
-
-    exp = comet_ml.Experiment(
-        api_key=API_KEY,
-        project_name="icd-gen",
-        workspace=workspace,
-        auto_metric_logging=True,  # default
-    )
     parser = argparse.ArgumentParser(
         description="Arguments for the denoising icl task, data gen, train, and eval."
     )
@@ -783,4 +773,3 @@ if __name__ == "__main__":
 
     main(args)
     exp.end()
-

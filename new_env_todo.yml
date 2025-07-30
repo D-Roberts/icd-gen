@@ -2,7 +2,7 @@
 
 # using miniforge and conda channels
 # run conda config --add channels conda-forge
-# run conda config --set channel_priority strict 
+# run conda config --set channel_priority strict
 
 
 
