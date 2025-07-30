@@ -19,9 +19,9 @@ Modify args in yaml.
 
 
 Initial code references:
-https://github.com/mattsmart/in-context-denoising
-https://github.com/dtsip/in-context-learning/tree/main/src
-https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
+* https://github.com/mattsmart/in-context-denoising
+* https://github.com/dtsip/in-context-learning/tree/main/src
+* https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 
 Start Comet tracking (Comet is like wandb; used in industry):
 https://www.comet.com/ai-daor/icd-gen/view/new/panels
