@@ -29,6 +29,7 @@ DATAGEN_GLOBALS:
         style_subspace_dimensions: random   # int or 'random'
         # parameters specific to the Manifold case
         radius_sphere: 1.0                  # controls radius of sphere (d-dim manifold S in R^n)
+    drift_noise_sigma_train_test:
 
 
 training:
@@ -42,8 +43,8 @@ training:
     optimizer_choice: adamw # DR: only one choice bc if no wd basically adam
     wd: 0.0 # weight decay in adamw
     scheduler_kwargs:
-        choice: cosine
-        warmup: 10 # num warmup steps for cosine scheduler
+        choice: # cosine or None
+        warmup: 1 # num warmup steps for cosine scheduler
     restart_nn_instance: #instance of a sequence model class (e.g. TransformerModelV1)
     restart_dataset: #(None) or 6-tuple (X_train, y_train, X_test, y_test, train_dict, test_dict) for dataset
     nn_model: TransformerModelV1noresOmitLast #string for a sequence model class (e.g. 'TransformerModelV1')
@@ -56,12 +57,12 @@ training:
     samples_per_context_example: 1
     full_loss_sample_interval: 4
     flag_save_dataset: False
-    flag_vis_loss: True
-    flag_vis_weights: True
-    flag_vis_batch_perf: True
+    flag_vis_loss: False
+    flag_vis_weights: False #DR: they get logged in Comet image tab
+    flag_vis_batch_perf: False
     test_ratio: 0.1
     nwork: 0
-    skip_PCA_heuristic_slow: False
+    skip_PCA_heuristic_slow: True
 
 # settings for visualization paper-like
 vis:

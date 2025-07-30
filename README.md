@@ -20,4 +20,6 @@ https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 Start Comet tracking (Comet is like wandb; used in industry):
 https://www.comet.com/ai-daor/icd-gen/view/new/panels
 
-To be able to create personal experiments, a Comet API Key must be created and placed in the icd-gen/src/.comet_token file and a Comet account username must be written to icd-gen/src/.comet_workspace, replacing the credentials I made public in this repo.
+* Track losses and save artifacts results outputs params plots and images per experiment.
+
+To be able to create your own experiments, a Comet API Key must be created and placed in the icd-gen/src/.comet_token file and a Comet account username must be written to icd-gen/src/.comet_workspace, replacing the credentials I made public in this repo.

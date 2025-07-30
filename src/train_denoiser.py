@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import comet_ml
+from PIL import Image
 
 import torch
 import torch.nn as nn
@@ -40,7 +41,7 @@ from baselines import (
     theory_linear_expected_error,
 )
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
-from vis_utils import vis_weights_kq_pv
+from vis_utils import vis_weights_kq_pv, vis_loss
 
 from models import *
 from util import run_subdir_setup
@@ -202,15 +203,14 @@ def train(model, args):
         "style_subspace_dimensions"
     ]  # int or 'random' (or just 'full' in clustering case)
 
-    """ HERE - linear: How many samples per in-context subspace? - We use option (A) (explained below) throughout
+    """ DR: this is from ic denoise repo
+    HERE - linear: How many samples per in-context subspace? - We use option (A) (explained below) throughout
     # (X, y) samples style A
     num_W_in_dataset = train_plus_test_size
     context_examples_per_W = 1
     samples_per_context_example = 1
     """
-    num_W_in_dataset = args.training[
-        "num_W_in_dataset"
-    ]  # we assert context_examples_per_W = 1, samples_per_context_example = 1
+    num_W_in_dataset = args.training["num_W_in_dataset"]
     context_examples_per_W = args.training["context_examples_per_W"]
     samples_per_context_example = args.training["samples_per_context_example"]
     assert context_examples_per_W == 1 and samples_per_context_example == 1
@@ -256,6 +256,7 @@ def train(model, args):
     )  # used as specialized label for model settings and run
 
     optimizer_lr = args.training["learning_rate"]  # 0.01  # 0.5
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=optimizer_lr,
@@ -403,9 +404,9 @@ def train(model, args):
     curve_x_losstest_interval = np.arange(
         0, epochs + 1e-5, full_loss_sample_interval / nbatches_per_epoch
     )
-    curve_x_losstrain_interval = np.arange(
-        0, epochs + 1e-5, full_loss_sample_interval / nbatches_per_epoch
-    )
+    # curve_x_losstrain_interval = np.arange(
+    #     0, epochs + 1e-5, full_loss_sample_interval / nbatches_per_epoch
+    # )
 
     # monitor the train error on the full test set every k batches (could be more/less than once per epoch)
     train_full_mse_loss = report_dataset_loss(
@@ -423,13 +424,12 @@ def train(model, args):
     curve_y_losstest_interval = [
         test_full_mse_loss
     ]  # will append to this each full_loss_sample_interval batches
-    curve_y_losstrain_interval = [train_full_mse_loss]  # will append to this each epoch
+    # curve_y_losstrain_interval = [train_full_mse_loss]  # will append to this each epoch
 
     ################################################################################
     # train loop
     ################################################################################
     period_save_weights = args.training["period_save_weights"]
-    count = 1
 
     for epoch in range(epochs):
         if epoch % period_save_weights == 0:
@@ -441,7 +441,7 @@ def train(model, args):
             # torch.save(model.state_dict(), model_path)
 
         running_loss_epoch = 0.0
-        running_loss_mesoscale = 0.0
+        # running_loss_mesoscale = 0.0
         running_batch_counter = 0
         print("\nepoch:", epoch)
 
@@ -462,43 +462,48 @@ def train(model, args):
 
             # print statistics
             running_loss_epoch += curve_y_losstrain_batch[-1]  # was [count]
-            running_loss_mesoscale += curve_y_losstrain_batch[-1]  # was [count]
+            # running_loss_mesoscale += curve_y_losstrain_batch[-1]  # was [count]
             # (slow) periodic inspection of test error
             if (
-                count % full_loss_sample_interval == 0
-            ):  # report it every "full_loss_sample_interval" batches
-                print(
-                    "Epoch: %d, batch: %4d, loss (avg): %.2e"
-                    % (epoch, count, running_loss_mesoscale / full_loss_sample_interval)
-                )
-                print(
-                    "running_loss_mesoscale, full_loss_sample_interval, count |",
-                    running_loss_mesoscale,
-                    full_loss_sample_interval,
-                    count,
-                )
+                running_batch_counter + 1
+            ) % full_loss_sample_interval == 0:  # report it every "full_loss_sample_interval" batches; use for test
+                # print(
+                #     "Epoch: %d, batch: %4d, loss (avg): %.2e"
+                #     % (epoch, count, running_loss_mesoscale / full_loss_sample_interval)
+                # )
+                # print(
+                #     "running_loss_mesoscale, full_loss_sample_interval, count |",
+                #     running_loss_mesoscale,
+                #     full_loss_sample_interval,
+                #     count,
+                # )
 
                 loss_test = report_dataset_loss(
                     model, loss_func, test_loader, "test", device
                 )
+
                 curve_y_losstest_interval.append(loss_test)
-
-                loss_train = report_dataset_loss(
-                    model, loss_func, train_loader, "train", device
+                exp.log_metrics(
+                    {"interval test loss": loss_test}, step=running_batch_counter
                 )
-                curve_y_losstrain_interval.append(loss_train)
 
-                running_loss_mesoscale = 0.0
+                # loss_train = report_dataset_loss(
+                #     model, loss_func, train_loader, "train", device
+                # )
+                # curve_y_losstrain_interval.append(loss_train)
 
-            count += 1  # count tracks number of batches which have been trained over (at this point)
+                # running_loss_mesoscale = 0.0
+
+            # count += 1  # count tracks number of batches which have been trained over (at this point)
             running_batch_counter += 1
             exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
 
         if args.training["scheduler_kwargs"] == "cosine":
             scheduler.step()  # step the learning rate; if not cosine then no scheduler
 
-        print("\tlast LR:", scheduler.get_last_lr())
+            print("\tlast LR:", scheduler.get_last_lr())
         print("end epoch:", epoch, "====================")
+
         ep_loss = running_loss_epoch / running_batch_counter
         curve_y_losstrain_epochs_avg.append(ep_loss)  # DR: keep for paper-like vis
 
@@ -525,11 +530,11 @@ def train(model, args):
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
 
-    print("curve_x_losstrain_batch", curve_x_losstrain_batch)
-    print("curve_y_losstrain_batch", curve_y_losstrain_batch, "\n")
+    # print("curve_x_losstrain_batch", curve_x_losstrain_batch)
+    # print("curve_y_losstrain_batch", curve_y_losstrain_batch, "\n")
 
-    print("curve_x_lossrain_interval", curve_x_losstrain_interval)
-    print("curve_y_losstrain_interval", curve_y_losstrain_interval, "\n")
+    # print("curve_x_lossrain_interval", curve_x_losstrain_interval)
+    # print("curve_y_losstrain_interval", curve_y_losstrain_interval, "\n")
 
     print("curve_x_losstest_interval", curve_x_losstest_interval)
     print("curve_y_losstest_interval", curve_y_losstest_interval, "\n")
@@ -561,13 +566,6 @@ def train(model, args):
             fname="curve_loss_train_epoch_avg",
             pltkwargs=dict(linestyle="--", marker="o", color="b", markersize=4),
         ),
-        "loss_train_interval": dict(
-            x=curve_x_losstrain_interval,
-            y=curve_y_losstrain_interval,
-            label="train (full)",
-            fname="curve_loss_train_interval",
-            pltkwargs=dict(linestyle="-", marker="o", color="b"),
-        ),
         "loss_test_interval": dict(
             x=curve_x_losstest_interval,
             y=curve_y_losstest_interval,
@@ -576,110 +574,47 @@ def train(model, args):
             pltkwargs=dict(linestyle="-", marker="o", color="r"),
         ),
     }
-    print("Compare to null performance and lin.alg. baselines:")
-    dumb_A_mse_on_train = loss_if_predict_zero(loss_func, train_loader, "train")
-    dumb_A_mse_on_test = loss_if_predict_zero(loss_func, test_loader, "test")
-    dumb_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, "train")
-    dumb_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, "test")
-    dumb_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, "train")
-    dumb_C_mse_on_test = loss_if_predict_average(loss_func, test_loader, "test")
+    print("Compare to baselines:")
+
+    # HAVE V1 here as baseline one-layer TODO@DR
+    simple_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, "train")
+    simple_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, "test")
+    simple_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, "train")
+    simple_C_mse_on_test = loss_if_predict_average(loss_func, test_loader, "test")
 
     # add core baselines to loss_vals_dict (will also add datagen-case-specific ones later)
     loss_vals_dict["baselines"] = {
-        "loss_if_predict_zero": dict(
-            alias="dumb_A",
-            label=r"guess $0$",
-            val_train=dumb_A_mse_on_train,
-            val_test=dumb_A_mse_on_test,
-            pltkwargs=dict(color="grey"),
-        ),
+        # #TODO@DR: predict with the baseline one-layer instead
+        # otherwise - leave only the simplest models that would work on
+        # multiple underlying distrib as baselines - average and most recent.
         "loss_if_predict_mostrecent": dict(
-            alias="dumb_B",
-            label=r"guess $x_{k-1}$",
-            val_train=dumb_B_mse_on_train,
-            val_test=dumb_B_mse_on_test,
+            alias="recent",
+            label=r"predict $x_{k-1}$",
+            val_train=simple_B_mse_on_train,
+            val_test=simple_B_mse_on_test,
             pltkwargs=dict(color="green"),
         ),
         "loss_if_predict_average": dict(
-            alias="dumb_C",  # TODO@DR: change names; keep the most recent and average as simple predictors, together with the one-layer linearized
+            alias="mean",  # TODO@DR: change names; keep the most recent and average as simple predictors, together with the one-layer linearized
             # softmax
-            label=r"guess mean",
-            val_train=dumb_C_mse_on_train,
-            val_test=dumb_C_mse_on_test,
+            label=r"predict mean",
+            val_train=simple_C_mse_on_train,
+            val_test=simple_C_mse_on_test,
             pltkwargs=dict(color="orange"),
         ),
     }
-    # the following heuristics baselines are specific to case 0: Linear subspaces
-    if datagen_choice == "linear":
-        if not skip_PCA_heuristic_slow:
-            print("Warning: not skip_PCA_heuristic_slow; slow lin.alg. step...")
-            heuristic_mse_on_train = loss_if_predict_linalg(
-                loss_func, train_loader, "train"
-            )
-            heuristic_mse_on_test = loss_if_predict_linalg(
-                loss_func, test_loader, "test"
-            )
-
-            loss_vals_dict["baselines"]["loss_if_predict_linalg"] = dict(
-                alias="heuristic_proj",
-                label=r"$P \tilde x$",
-                val_train=heuristic_mse_on_train,
-                val_test=heuristic_mse_on_test,
-                pltkwargs=dict(color="black"),
-            )
-
-            # also compute shrunken predictor
-            # - we assume proper subspace through origin
-            # - we assume it is iid gaussian ball corruption (not orthogonal to W)
-            if (style_origin_subspace) and (
-                not style_corruption_orthog
-            ):  # we assume proper subspace through origin
-                heuristic_mse_shrunken_on_train = loss_if_predict_linalg_shrunken(
-                    loss_func,
-                    train_loader,
-                    "train",
-                    sigma2_pure_context,
-                    sigma2_corruption,
-                    style_origin_subspace=style_origin_subspace,
-                    style_corruption_orthog=style_corruption_orthog,
-                )
-                heuristic_mse_shrunken_on_test = loss_if_predict_linalg_shrunken(
-                    loss_func,
-                    test_loader,
-                    "test",
-                    sigma2_pure_context,
-                    sigma2_corruption,
-                    style_origin_subspace=style_origin_subspace,
-                    style_corruption_orthog=style_corruption_orthog,
-                )
-                assert style_subspace_dimensions == "random"
-                dim_d_k = np.random.randint(
-                    1, min(dim_n, context_len // 2), size=num_W_in_dataset
-                )
-                theory_expected_error_linalg_shrunken = theory_linear_expected_error(
-                    dim_n, dim_d_k, sigma2_corruption, linear_sigma2_pure_context
-                )  # style_subspace_dimensions is a string "random" TODO@DR not sure if correct
-
-                loss_vals_dict["baselines"]["loss_if_predict_linalg_shrunken"] = dict(
-                    alias="heuristic_proj_shrunken",
-                    label=r"$\gamma P \tilde x$",
-                    val_train=heuristic_mse_shrunken_on_train,
-                    val_test=heuristic_mse_shrunken_on_test,
-                    pltkwargs=dict(color="mediumpurple"),
-                )
-
-                loss_vals_dict["baselines"][
-                    "theory_expected_error_linalg_shrunken"
-                ] = dict(
-                    alias="theory_expected_error_linalg_shrunken",
-                    label=r"$\mathbb{E}[L(\theta^*)]$",
-                    val_train=theory_expected_error_linalg_shrunken,  # note train/test don't matter - theory curve
-                    val_test=theory_expected_error_linalg_shrunken,
-                    pltkwargs=dict(color="mediumpurple", linestyle=":"),
-                )
 
     plt.plot(curve_y_losstrain_epochs_avg)
-    plt.show()  # I can see epoch loss decreasing down to 0.7786882519721985 with 80 datapoints dim 32 context 500 linear 10 epoch
+    plt.savefig("artifacts/loss_train_avg.png")
+    image_path = "artifacts/loss_train_avg.png"
+    img = Image.open(image_path)
+
+    exp.log_image(
+        image_data=img,
+        name="loss_train_avg.png",
+        image_format="png",
+        step=0,
+    )
 
     return (
         model,
@@ -732,13 +667,39 @@ def main(args):
             learned_W_KQ = learned_W_KQ * np.eye(args.training["dim_n"])
             learned_W_PV = learned_W_PV * np.eye(args.training["dim_n"])
 
-        vis_weights_kq_pv(
+        img_path = vis_weights_kq_pv(
             learned_W_KQ,
             learned_W_PV,
             titlemod=r"$\theta$ final",
             dir_out=io_dict["dir_vis"],
             fname="weights_final",
-            flag_show=True,
+            flag_show=args.training["flag_vis_loss"],
+        )
+
+        img = Image.open(img_path)
+
+        exp.log_image(
+            image_data=img,
+            name="attn weigths.png",
+            image_format="png",
+            step=0,
+        )
+
+        # plot with the baselines
+        img_path_loss_baselines = vis_loss(
+            loss_vals_dict=loss_vals_dict,
+            titlemod="with baselines",
+            dir_out=io_dict["dir_vis"],
+            fname="Train Test Losses and Baselines",
+            flag_show=args.training["flag_vis_weights"],
+        )
+        img = Image.open(img_path_loss_baselines)
+
+        exp.log_image(
+            image_data=img,
+            name="loss baselines.png",
+            image_format="png",
+            step=0,
         )
 
 
