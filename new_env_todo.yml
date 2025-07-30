@@ -16,5 +16,4 @@
 
 conda install scikit-learn
 conda install munch
-conda install -c conda-forge py-xgboost
 conda install -c conda-forge comet-ml
