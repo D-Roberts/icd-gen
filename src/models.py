@@ -6,6 +6,7 @@ from transformers import GPT2Model, GPT2Config
 from tqdm import tqdm
 
 import warnings
+warnings.filterwarnings("ignore")
 
 
 class ReturnLastToken(nn.Module):
@@ -154,7 +155,8 @@ class TransformerModelV1(nn.Module):
 
 class TransformerModelV1noresOmitLast(TransformerModelV1):
     """
-    See docstring TransformerModelV1
+    See docstring TransformerModelV1 : TODO@DR these are just going to be two simple baselines -
+                                             keep only one copy of V1 and V2
     """
 
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):

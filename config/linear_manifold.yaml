@@ -32,7 +32,7 @@ DATAGEN_GLOBALS:
 
 
 training:
-    task: in-context denoise
+    task: TBD
     batch_size: 4
     learning_rate: 0.01
     period_save_weights: 1
@@ -43,7 +43,7 @@ training:
     wd: 0.0 # weight decay in adamw
     scheduler_kwargs: 
         choice: cosine
-        milestones: [5, 10] #[30, 80]
+        # milestones: [5, 10] #[30, 80]
         warmup: 10 # num warmup steps for cosine scheduler
         gamma: 0.1
     restart_nn_instance: #instance of a sequence model class (e.g. TransformerModelV1)
@@ -64,13 +64,6 @@ training:
     test_ratio: 0.1
     nwork: 0
     skip_PCA_heuristic_slow: False
-
-wandb:
-    name: "linear_case"
-    project: in-context-denoising
-    entity: denisa-roberts
-    notes:
-    log_every_steps: 1
 
 # settings for visualization
 vis:

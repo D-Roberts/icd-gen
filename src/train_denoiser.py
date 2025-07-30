@@ -14,15 +14,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import softmax as scipy_softmax
 
+import comet_ml
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import torch.optim as optim
 
-import comet_ml
 API_KEY = Path(".comet_api").read_text().strip()
-comet_ml.init(api_key=API_KEY)
+
+comet_ml.login()
+#comet_ml.init(api_key=API_KEY) #will deprecate
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
@@ -101,8 +104,6 @@ class DatasetWrapper(Dataset):
         print("not implemented")
         return
 
-
-# Leave this as is from icl; see that I use the scheduler TODO@DR
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
@@ -305,9 +306,9 @@ def train(model, args):
         )
     )
 
-    print(
-        "in train denoiser, shape and device of x_train", x_train.shape, x_train.device
-    )
+    # print(
+    #     "in train denoiser, shape and device of x_train", x_train.shape, x_train.device
+    # )
 
     ################################################################################
     # Build or load data
@@ -319,7 +320,7 @@ def train(model, args):
         x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
             restart_dataset
         )
-        print("x_train.shape", x_train.shape)
+        # print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
         train_size = x_train.shape[0]
@@ -328,13 +329,13 @@ def train(model, args):
         )  # sanity check
 
         # fname suffix for io
-        data_suffix = "RESTART-SAME-DATASET"  # appended to fname
+        data_suffix = "RESTART-SAME-DATASET"  # appended to fname 
     else:
         x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces = (
             data_train_test_split_fncall(**base_kwargs)
         )
 
-        print("x_train.shape", x_train.shape)
+        # print("x_train.shape", x_train.shape)
 
         # specify training and testing datasets
         train_size = x_train.shape[0]
@@ -357,21 +358,21 @@ def train(model, args):
     test_dataset = DatasetWrapper(x_test, y_test)
 
     runinfo_optimizer_lines = ["\toptimizer_lr, %.2e" % optimizer_lr]
-    opt_suffix = "adam%.1e" % optimizer_lr  # appended to fname
+    opt_suffix = "adamw%.1e" % optimizer_lr  # appended to fname
 
-    # I'm not using sgd with momentum
 
     if args.training["scheduler_kwargs"] == "cosine":
         scheduler = get_cosine_schedule_with_warmup(
-            optimizer, 10, epochs * train_size
-        )  # TODO@DR put warmup steps in yaml config; ditch the other schedules - either cosine or None
+            optimizer, args.training["warmup"], epochs * train_size
+        )  
+        print("my learning rate is", args.training["warmup"])
 
     else:
         scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer, milestones=[epochs + 1], gamma=1.0
         )  # so this should be None
 
-    nwork = 0
+    nwork = 0 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=nwork
     )
@@ -496,6 +497,7 @@ def train(model, args):
         print("\tlast LR:", scheduler.get_last_lr())
         print("end epoch:", epoch, "====================")
         curve_y_losstrain_epochs_avg.append(running_loss_epoch / running_batch_counter)
+
 
     print("Finished Training")
 
@@ -694,6 +696,7 @@ def train(model, args):
 
 def main(args):
 
+
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
     else:
@@ -701,9 +704,7 @@ def main(args):
         model = TransformerModelV1noresOmitLast(
             args.training["context_len"], args.training["dim_n"]
         )
-        # model = TransformerModelV3(
-        #    args.training["context_len"], args.training["dim_n"] #very very different
-        #  )
+        
 
     model.to(device)
     model.train()
@@ -721,6 +722,7 @@ def main(args):
         train_data_subspaces,
         test_data_subspaces,
     ) = train(model, args)
+
 
     if args.training["nn_model"] not in ["TransformerModelQKVnores"]:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
@@ -742,6 +744,15 @@ def main(args):
 
 
 if __name__ == "__main__":
+
+    workspace = Path(".comet_workspace").read_text().strip()
+
+    exp = comet_ml.Experiment(
+        api_key=API_KEY,
+        project_name="icd-gen",
+        workspace=workspace,
+        auto_metric_logging=True,  # default
+    )
     parser = argparse.ArgumentParser(
         description="Arguments for the denoising icl task, data gen, train, and eval."
     )
@@ -771,3 +782,5 @@ if __name__ == "__main__":
         yaml.dump(args.__dict__, yaml_file, default_flow_style=False)
 
     main(args)
+    exp.end()
+
