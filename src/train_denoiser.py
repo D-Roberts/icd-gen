@@ -41,7 +41,7 @@ from baselines import (
     theory_linear_expected_error,
 )
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
-from vis_utils import vis_weights_kq_pv, vis_loss
+from vis_utils import vis_weights_kq_pv, vis_loss, vis_weights_grad_kq_pv
 
 from models import *
 from util import run_subdir_setup
@@ -460,23 +460,10 @@ def train(model, args):
             curve_y_losstrain_batch.append(loss)
 
             # print statistics
-            running_loss_epoch += curve_y_losstrain_batch[-1]  # was [count]
-            # running_loss_mesoscale += curve_y_losstrain_batch[-1]  # was [count]
-            # (slow) periodic inspection of test error
-            if (
-                running_batch_counter + 1
-            ) % full_loss_sample_interval == 0:  # report it every "full_loss_sample_interval" batches; use for test
-                # print(
-                #     "Epoch: %d, batch: %4d, loss (avg): %.2e"
-                #     % (epoch, count, running_loss_mesoscale / full_loss_sample_interval)
-                # )
-                # print(
-                #     "running_loss_mesoscale, full_loss_sample_interval, count |",
-                #     running_loss_mesoscale,
-                #     full_loss_sample_interval,
-                #     count,
-                # )
+            running_loss_epoch += curve_y_losstrain_batch[-1]
 
+            # (interval=4 batches) periodic inspection of test error
+            if (running_batch_counter + 1) % full_loss_sample_interval == 0:
                 loss_test = report_dataset_loss(
                     model, loss_func, test_loader, "test", device
                 )
@@ -495,6 +482,12 @@ def train(model, args):
         print("end epoch:", epoch, "====================")
 
         ep_loss = running_loss_epoch / running_batch_counter
+
+        # for name, param in model.named_parameters():
+        #     # print(f"param is {param} and grad is {param.grad}")
+        #     if param.grad is not None:
+        #         print(f"In epoch {epoch} shape of {name} is {param.size()} and gradient is {param.grad.size()}")
+
         curve_y_losstrain_epochs_avg.append(ep_loss)  # DR: keep for paper-like vis
 
         exp.log_metrics({"epoch avg train loss": ep_loss}, epoch=epoch)
@@ -560,7 +553,7 @@ def train(model, args):
     }
     print("Compare to baselines:")
 
-    # HAVE V1 here as baseline one-layer TODO@DR
+    # HAVE V2 here as baseline one-layer TODO@DR must train on same
     simple_B_mse_on_train = loss_if_predict_mostrecent(loss_func, train_loader, "train")
     simple_B_mse_on_test = loss_if_predict_mostrecent(loss_func, test_loader, "test")
     simple_C_mse_on_train = loss_if_predict_average(loss_func, train_loader, "train")
@@ -568,7 +561,7 @@ def train(model, args):
 
     # add core baselines to loss_vals_dict (will also add datagen-case-specific ones later)
     loss_vals_dict["baselines"] = {
-        # #TODO@DR: predict with the baseline one-layer instead
+        # #TODO@DR: predict with the baseline one-layer V2 softmax instead
         # otherwise - leave only the simplest models that would work on
         # multiple underlying distrib as baselines - average and most recent.
         "loss_if_predict_mostrecent": dict(
@@ -587,18 +580,6 @@ def train(model, args):
             pltkwargs=dict(color="orange"),
         ),
     }
-
-    plt.plot(curve_y_losstrain_epochs_avg)
-    plt.savefig("artifacts/loss_train_avg.png")
-    image_path = "artifacts/loss_train_avg.png"
-    img = Image.open(image_path)
-
-    exp.log_image(
-        image_data=img,
-        name="loss_train_avg.png",
-        image_format="png",
-        step=0,
-    )
 
     return (
         model,
@@ -620,8 +601,7 @@ def main(args):
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
     else:
-        # model = TransformerModelV1nores(args.training["context_len"], args.training["dim_n"]) #this seems to fit the best for the default
-        model = TransformerModelV1noresOmitLast(
+        model = TransformerModelV2noresOmitLast(
             args.training["context_len"], args.training["dim_n"]
         )
 
@@ -645,11 +625,10 @@ def main(args):
     if args.model["family"] not in {"gpt2"}:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
-        if (
-            learned_W_KQ.size == 1
-        ):  # in this case we are training 1-param weights (scaled identity) - remake as arr
-            learned_W_KQ = learned_W_KQ * np.eye(args.training["dim_n"])
-            learned_W_PV = learned_W_PV * np.eye(args.training["dim_n"])
+
+        # DR: Also visualize grads and activations for full understanding
+        learned_W_KQ_grad = net.W_KQ.grad.detach().cpu().numpy()
+        learned_W_PV_grad = net.W_PV.grad.detach().cpu().numpy()
 
         img_path = vis_weights_kq_pv(
             learned_W_KQ,
@@ -657,14 +636,33 @@ def main(args):
             titlemod=r"$\theta$ final",
             dir_out=io_dict["dir_vis"],
             fname="weights_final",
-            flag_show=args.training["flag_vis_loss"],
+            flag_show=args.training["flag_vis_weights"],
         )
 
         img = Image.open(img_path)
 
         exp.log_image(
             image_data=img,
-            name="attn weigths.png",
+            name="attn_weigths.png",
+            image_format="png",
+            step=0,
+        )
+
+        # plot grads
+        img_path = vis_weights_grad_kq_pv(
+            learned_W_KQ_grad,
+            learned_W_PV_grad,
+            titlemod=r"$\theta$ grad",
+            dir_out=io_dict["dir_vis"],
+            fname="weight_mats_grads",
+            flag_show=args.training["flag_vis_grad"],
+        )
+
+        img = Image.open(img_path)
+
+        exp.log_image(
+            image_data=img,
+            name="attn_weigths_grads.png",
             image_format="png",
             step=0,
         )
@@ -702,6 +700,7 @@ if __name__ == "__main__":
         args = parser.parse_args()  # Reload arguments to apply YAML values
 
     print(f"Running with: {args}")
+    exp.log_parameters(args)
 
     with open(os.path.join(DIR_OUT, "config.yaml"), "w") as yaml_file:
         yaml.dump(args.__dict__, yaml_file, default_flow_style=False)

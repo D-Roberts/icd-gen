@@ -5,6 +5,61 @@ from PIL import Image
 import os
 
 
+def vis_weights_grad_kq_pv(
+    learned_W_KQ, learned_W_PV, titlemod="", dir_out=None, fname=None, flag_show=False
+):
+    """
+    the grad of the weight matrices
+    """
+    cmap = "coolwarm"
+    cnorm0 = colors.CenteredNorm()
+    cnorm1 = colors.CenteredNorm()
+
+    # prepare figure and axes (gridspec)
+    plt.close("all")
+    fig1 = plt.figure(figsize=(8, 4), constrained_layout=True)
+    gs = fig1.add_gridspec(1, 4, width_ratios=[1, 0.05, 1, 0.05])
+    ax0 = fig1.add_subplot(gs[0, 0])
+    ax0_cbar = fig1.add_subplot(gs[0, 1])
+    ax1 = fig1.add_subplot(gs[0, 2])
+    ax1_cbar = fig1.add_subplot(gs[0, 3])
+
+    # plot the data
+    im0 = ax0.imshow(learned_W_KQ, cmap=cmap, norm=cnorm0)
+    ax0.set_title(
+        r"Grad $W_{KQ} \langle w_{ii} \rangle = %.3f$" % np.mean(np.diag(learned_W_KQ))
+    )
+
+    im1 = ax1.imshow(learned_W_PV, cmap=cmap, norm=cnorm1)
+    ax1.set_title(
+        r"Grad $W_{PV} \langle w_{ii} \rangle = %.3f$" % np.mean(np.diag(learned_W_PV))
+    )
+
+    cb0 = fig1.colorbar(im0, cax=ax0_cbar)
+    cb1 = plt.colorbar(im1, cax=ax1_cbar, shrink=0.5)
+
+    title = "Weight grads: %s" % titlemod
+    if fname is not None:
+        title += "\n%s" % fname
+    plt.suptitle(title, fontsize=10)
+
+    plt.tick_params(
+        axis="both", which="both", bottom=False, top=False, left=False, right=False
+    )
+
+    image_path = ""
+    if dir_out is not None and fname is not None:
+        image_path = dir_out + os.sep + fname + "_grad" + ".png"
+        plt.savefig(image_path, dpi=300)
+
+    if flag_show:
+        plt.show()
+
+    plt.close("all")
+
+    return image_path
+
+
 def vis_weights_kq_pv(
     learned_W_KQ, learned_W_PV, titlemod="", dir_out=None, fname=None, flag_show=False
 ):

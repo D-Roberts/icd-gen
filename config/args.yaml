@@ -1,11 +1,11 @@
-# models imported from HF
+# models imported from HF TODO@DR - get diffusers or other gen not gpt2
 model:
-    family: 1softmaxT1H #gpt2
+    family: 1softmaxT1H #gpt2 
     n_embd: 256 #these dims are for the gpt2 
     n_layer: 12
     n_head: 8
-    n_dims: 5
-    n_positions: 11
+    n_dims: 8 #these should be the d in subspace dimension though I'll probably do different datagen
+    n_positions: 500 #TODO@DR prep for position embeddings these would be the context+target like in ADPM
 
 data:
     datagen_case: 0   #0 or 1 for linear or manifold (DR: which was 2 for them; I am skipping mixture)
@@ -30,9 +30,9 @@ DATAGEN_GLOBALS:
         # parameters specific to the Manifold case
         radius_sphere: 1.0                  # controls radius of sphere (d-dim manifold S in R^n)
     
-    drift_noise_sigma_train_test_linear:        # the only difference from the linear case0 is the drift in noise
+    drift_noise_sigma_train_test_linear:  # DR: the only difference from the linear case0 is the drift in added noise std
         sigma2_corruption_train: 0.1                  
-        sigma2_corruption_test: 2.0
+        sigma2_corruption_test: 2.0   
         style_corruption_orthog: False           
         style_origin_subspace: True               
         style_subspace_dimensions: 8        
@@ -43,25 +43,25 @@ DATAGEN_GLOBALS:
 
 training:
     task: TBD
-    batch_size: 80
+    batch_size: 4
     learning_rate: 0.01
     period_save_weights: 1
     train_steps:
     resume_id:
-    epochs: 60
+    epochs: 4
     optimizer_choice: adamw # DR: only one choice bc if no wd basically adam
     wd: 0.0 # weight decay in adamw
     scheduler_kwargs:
         choice: cosine # cosine or None
-        warmup: 10 # num warmup steps for cosine scheduler
+        warmup: 1 # num warmup steps for cosine scheduler
     restart_nn_instance: #instance of a sequence model class (e.g. TransformerModelV1)
     restart_dataset: #(None) or 6-tuple (X_train, y_train, X_test, y_test, train_dict, test_dict) for dataset
     nn_model: TransformerModelV1noresOmitLast #string for a sequence model class (e.g. 'TransformerModelV1')
-    context_len: 500 #(default: 500) int, context length of input token sequence (X.shape[-1])
+    context_len: 16 #(default: 500) int, context length of input token sequence (X.shape[-1])
     dim_n: 16 #(default: 32) int, ambient dimension
     seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
-    train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
-    num_W_in_dataset: 1000
+    train_plus_test_size: 40 # settings for dataset construction + training (from their settings file)
+    num_W_in_dataset: 40
     context_examples_per_W: 1
     samples_per_context_example: 1
     full_loss_sample_interval: 4
@@ -69,6 +69,7 @@ training:
     flag_vis_loss: False
     flag_vis_weights: False 
     flag_vis_batch_perf: False
+    flag_vis_grad: False
     test_ratio: 0.2
     nwork: 0
     skip_PCA_heuristic_slow: True
