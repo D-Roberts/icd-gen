@@ -11,7 +11,7 @@
 
 ### To train:
 ```
-python src/train_denoiser.py --config src/config/linear_manifold.yaml
+python src/train_denoiser.py --config config/args.yaml
 ```
 
 * The environment needs to be set up first, instructions mostly in new_env_todo.yml and then
