@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
+import scipy.linalg as la
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -78,45 +79,33 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
         os.mkdir(core_dir)
 
 # Put in data_gen TODO@DR ADD New Ones; Ditch the Clustering
-DATASET_CASES = {0: "Linear", 1: "Clustering", 2: "Manifold (sphere)"}
+DATASET_CASES = {0: "Linear", 2: "Manifold (sphere)"}
 
+# TODO@DR hooks when I have more layers POC
+# activations = {}
 
-class DatasetWrapper(Dataset):
-    """
-    (relic): currently, there is a "remainder" batch at the end, with size smaller than batch_size -- could discard it
-    """
-
-    def __init__(self, X, Y):
-        self.x = X
-        self.y = Y
-
-        self.dim_n = self.x.size()[1]
-        self.context_length = self.x.size()[2]
-
-    # Mandatory: Get input pair for training
-    def __getitem__(self, idx):
-        return self.x[idx, :, :], self.y[idx, :]
-
-    # Mandatory: Number of elements in dataset (i.e. size of batch dimension 0)
-    def __len__(self):
-        X_len = self.x.size()[0]
-        return X_len
-
-    # This function is not needed
-    def plot(self):
-        print("not implemented")
-        return
+# def get_activation(name):
+#     def hook(model, input, output):
+#         activations[name] = output.detach()
+#     return hook
+# model.layer_name.register_forward_hook(get_activation('attn_output'))
 
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
-    output = model(xs)
+    output_full, attn_arg = model(xs)
+    output = output_full[:, :, -1]
     # print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
     loss = loss_func(output, ys)
     loss.backward()
     optimizer.step()
-    return loss.detach().item(), output.detach()
+    return (
+        loss.detach().item(),
+        output.detach(),
+        output_full.detach(),
+        attn_arg.detach(),
+    )
 
 
 def train(model, args):
@@ -371,9 +360,6 @@ def train(model, args):
         scheduler = get_cosine_schedule_with_warmup(
             optimizer, args.training["scheduler_kwargs"]["warmup"], epochs * train_size
         )
-        print(
-            "what is the warmup##########", args.training["scheduler_kwargs"]["warmup"]
-        )
 
     nwork = 0
     train_loader = DataLoader(
@@ -453,7 +439,7 @@ def train(model, args):
             #     "targets shape and device", targets.shape, targets.device
             # )  # (batch size, n dim of last token)
 
-            loss, output = train_step(
+            loss, output, output_full, attn_arg = train_step(
                 model, inputs.to(device), targets.to(device), optimizer, loss_func
             )
 
@@ -479,7 +465,33 @@ def train(model, args):
         if args.training["scheduler_kwargs"]["choice"] == "cosine":
             scheduler.step()  # step the learning rate; if not cosine then no scheduler
             print("\tlast LR:", scheduler.get_last_lr())
+
         print("end epoch:", epoch, "====================")
+
+        # Plot last activations (full_output) and attn_arg from the model
+        print(
+            "shape output full last from last batch as well as attn",
+            output_full[-1, :, :].shape,
+            attn_arg[-1, :, :].shape,
+        )
+
+        img_path = vis_weights_kq_pv(
+            output_full[-1, :, :].detach().cpu().numpy(),
+            attn_arg[-1, :, :].detach().cpu().numpy(),
+            titlemod=f"activations final and attnarg last in epoch {epoch}",
+            dir_out=io_dict["dir_vis"],
+            fname="activations final per epoch",
+            flag_show=args.training["flag_vis_weights"],
+        )
+
+        img = Image.open(img_path)
+
+        exp.log_image(
+            image_data=img,
+            name=f"attn_activations{epoch}.png",
+            image_format="png",
+            step=0,
+        )
 
         ep_loss = running_loss_epoch / running_batch_counter
 
@@ -601,9 +613,7 @@ def main(args):
     if args.model["family"] in {"gpt2"}:
         model = build_model(args.model)
     else:
-        model = TransformerModelV2noresOmitLast(
-            args.training["context_len"], args.training["dim_n"]
-        )
+        model = TransformerModelV2(args.training["context_len"], args.training["dim_n"])
 
     model.to(device)
     model.train()
@@ -626,9 +636,25 @@ def main(args):
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
 
-        # DR: Also visualize grads and activations for full understanding
+        # TODO@DR: Also visualize grads and activations for full understanding
         learned_W_KQ_grad = net.W_KQ.grad.detach().cpu().numpy()
         learned_W_PV_grad = net.W_PV.grad.detach().cpu().numpy()
+
+        # Q, R, perm = la.qr(learned_W_KQ, pivoting=True)
+        # print(f"What is R for learned_W_KQ rank-reveal decomp: {R}")
+        # # TODO@DR: Do some rank analysis - (the papers with the ranks)
+
+        rank_wkq = np.linalg.matrix_rank(learned_W_KQ)
+        print(f"rank of learned_W_KQ is {rank_wkq}")  # 16
+        rank_wpv = np.linalg.matrix_rank(learned_W_PV)
+        print(f"rank of learned_W_PV is {rank_wpv}")  # 16
+
+        rank_wkq = np.linalg.matrix_rank(learned_W_KQ_grad)
+        print(f"rank of learned_W_KQ grad last is {rank_wkq}")  # 4
+        rank_wpv = np.linalg.matrix_rank(learned_W_PV_grad)
+        print(f"rank of learned_W_PV grad last is {rank_wpv}")  # 4
+        # TODO@DR - is there something about the rank of the grad mat
+        # at the local optimums?
 
         img_path = vis_weights_kq_pv(
             learned_W_KQ,
@@ -699,8 +725,8 @@ if __name__ == "__main__":
             parser.set_defaults(**config)
         args = parser.parse_args()  # Reload arguments to apply YAML values
 
-    print(f"Running with: {args}")
-    exp.log_parameters(args)
+    # print(f"Running with: {args}")
+    # exp.log_parameters(args)
 
     with open(os.path.join(DIR_OUT, "config.yaml"), "w") as yaml_file:
         yaml.dump(args.__dict__, yaml_file, default_flow_style=False)

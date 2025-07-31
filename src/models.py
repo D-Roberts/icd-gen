@@ -6,6 +6,7 @@ from transformers import GPT2Model, GPT2Config
 from tqdm import tqdm
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
@@ -190,21 +191,12 @@ class TransformerModelV1noresOmitLast(TransformerModelV1):
 
 class TransformerModelV2(nn.Module):
     """
-    Simplest model:
-    - no positional encoding is used
-    - same as V1 but now softmax in place of `linear` self-attention
+    Simplified attention only 1 layer and softmax;
     """
 
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
         super().__init__()
-        assert n_layer == 1  # TODO implement...
-        assert n_head == 1  # TODO implement...
-        assert (
-            dim_attn is None
-        )  # TODO implement... for now we take dim_attn == dim_input
-        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
 
-        # attention matrices (need to split by head...)
         self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
         self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
         self.rho = 1.0
@@ -223,12 +215,14 @@ class TransformerModelV2(nn.Module):
         # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
         attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
-        f_attn = xs + W_PV @ xs @ softmax_attn_arg
+        f_attn = W_PV @ xs @ softmax_attn_arg
 
-        out = f_attn[
-            :, :, -1
-        ]  # take dim_n output result at last token, for all batches
-        return out
+        # out = f_attn[
+        #     :, :, -1
+        # ]  # take dim_n output result at last token, for all batches
+
+        # return all to be able to plot and inspect ranks
+        return f_attn, attn_arg
 
 
 class TransformerModelV2noresOmitLast(TransformerModelV2):

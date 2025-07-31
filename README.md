@@ -5,6 +5,7 @@
     *2. there is a bug in the plot loss baselines code
     *3. there might be a bug in the batch loss calculation and/or plotting
     *4. move more params and train choices and archi and data gen options to yaml for cleaner code and faster iteration.
+    *5. Log grads, activations, and do rank-revealing decomps
     
 
 

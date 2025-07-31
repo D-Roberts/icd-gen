@@ -49,7 +49,8 @@ def report_dataset_loss(
     with torch.no_grad():
         for i, data in enumerate(dataloader, 0):
             samples, targets = data
-            outputs = net(samples.to(device))
+            outputs_full, _ = net(samples.to(device))
+            outputs = outputs_full[:, :, -1]
 
             if plot_some:
                 # visualization and debugging
