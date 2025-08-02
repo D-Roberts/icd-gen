@@ -2,7 +2,6 @@ import datetime
 import numpy as np
 
 import os
-import pickle  # must we? TODO: get rid of the pickle later
 import torch
 
 # keep these until I understand exactly how the vis works

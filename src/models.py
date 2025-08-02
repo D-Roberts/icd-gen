@@ -10,19 +10,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-class ReturnLastToken(nn.Module):
-    """
-    Baseline model -- return final token
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, xs):
-        outs = xs[:, :, -1]  # return the last token
-        return outs
-
-
 def weight_matrix(dim_in, dim_out, mode="default"):
     """
     Can use to initialize weight matrices in nn layers
@@ -48,6 +35,7 @@ def weight_matrix(dim_in, dim_out, mode="default"):
     return torch.nn.Parameter(W_tensor)
 
 
+# This is for HF models
 def build_model(conf):
     if conf["family"] == "gpt2":
         model = TransformerModel(
@@ -61,9 +49,6 @@ def build_model(conf):
         raise NotImplementedError
 
     return model
-
-    models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]
-    return models
 
 
 # this is from icl stfd code to work with the HuggingFace TODO@DR Note that if I want to strip the model of more things,
@@ -110,7 +95,6 @@ class TransformerModel(nn.Module):
         ]  # predict only on xs TODO@DR: change this for the input shape in the icd currently
 
 
-# TODO@DR: This will be exactly the baseline from ic-denoiser paper
 class TransformerModelV1(nn.Module):
     """
     Simplest model:
@@ -189,6 +173,7 @@ class TransformerModelV1noresOmitLast(TransformerModelV1):
         return out
 
 
+# TODO@DR: This will be exactly the baseline from ic-denoiser paper
 class TransformerModelV2(nn.Module):
     """
     Simplified attention only 1 layer and softmax;
@@ -205,67 +190,27 @@ class TransformerModelV2(nn.Module):
         """
         xs is a sequence array of shape [batchsz, ndim, context_length]
             - batchsz = batch size
-            - note the last two components match the math notation
+
+        return: DR: last layer full output and the argument to the softmax
         """
         batchsz, n_dim, n_tokens = xs.size()
 
         W_KQ = self.W_KQ
         W_PV = self.W_PV
 
+        xs_skip_last = xs[:, :, :-1]
+
         # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
-        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ xs / self.rho
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
-        f_attn = W_PV @ xs @ softmax_attn_arg
+        f_attn = W_PV @ xs_skip_last @ softmax_attn_arg
 
         # out = f_attn[
         #     :, :, -1
         # ]  # take dim_n output result at last token, for all batches
 
-        # return all to be able to plot and inspect ranks
+        # @DR: return all to be able to plot and inspect ranks
         return f_attn, attn_arg
-
-
-class TransformerModelV2noresOmitLast(TransformerModelV2):
-    """
-    See docstring TransformerModelV2
-    """
-
-    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
-        super().__init__(
-            context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head
-        )
-
-    def forward(self, xs):
-        """
-        xs is a sequence array of shape [batchsz, ndim, context_length]
-            - batchsz = batch size
-            - note the last two components match the math notation
-        """
-        batchsz, n_dim, n_tokens = xs.size()
-
-        W_KQ = self.W_KQ
-        W_PV = self.W_PV
-        # rho = n_tokens
-
-        xs_skip_last = xs[:, :, :-1]
-        attn_arg = (
-            torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ xs[:, :, [-1]] / self.rho
-        )
-
-        # p7 Bartlett: "Softmax applied column-wise" (dim = data dim, not token dim)
-        softmax_attn_arg = torch.softmax(attn_arg, dim=1)
-        f_attn = (
-            W_PV @ xs_skip_last @ softmax_attn_arg
-        )  # the residual stream term "+ xs" has been removed
-
-        out = f_attn[
-            :, :, -1
-        ]  # take dim_n output result at last token, for all batches
-
-        return out
-
-
-# TODO@DR add here my others
 
 
 class DynamicTanh(nn.Module):
@@ -300,14 +245,7 @@ class TransformerModelV11(nn.Module):
 
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=2):
         super().__init__()
-        assert n_layer == 1  # TODO implement...
-        assert n_head == 2  # TODO implement...
-        assert (
-            dim_attn is None
-        )  # TODO implement... for now we take dim_attn == dim_input
-        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
 
-        # attention matrices (need to split by head...)
         self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
         self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
 
@@ -326,8 +264,8 @@ class TransformerModelV11(nn.Module):
     def forward(self, xs):
         """
         xs is a sequence array of shape [batchsz, ndim, context_length]
-            - batchsz = batch size
-            - note the last two components match the math notation
+        TODO@DR: double check the two-head code - likely a bug
+
         """
         batchsz, n_dim, n_tokens = xs.size()
 
@@ -461,21 +399,12 @@ class TransformerModelV11SkipLast(nn.Module):
 
 class TransformerModelV11SkipLastOneOnly(nn.Module):
     """
-    Simplest model 2 heads - like 11 but on omit last which learns so much better in V2
-    - no positional encoding is used
-    - same as V1 but now softmax in place of `linear` self-attention
+    TODO@DR: double check code for 2 heads; keep only one version of this archi.
     """
 
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=2):
         super().__init__()
-        assert n_layer == 1  # TODO implement...
-        assert n_head == 2  # TODO implement...
-        assert (
-            dim_attn is None
-        )  # TODO implement... for now we take dim_attn == dim_input
-        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
 
-        # attention matrices (need to split by head...)
         self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
         self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
 
@@ -552,17 +481,12 @@ class TransformerModelV11SkipLastOneOnly(nn.Module):
 class TransformerModelV2Tied2(nn.Module):
     """
     Simplest model: with 2 layer
+    TODO@DR: implement the exact architecture from the theory section. Maybe create a layer.
 
     """
 
     def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
         super().__init__()
-        assert n_layer == 2  # TODO implement...
-        assert n_head == 1  # TODO implement...
-        assert (
-            dim_attn is None
-        )  # TODO implement... for now we take dim_attn == dim_input
-        # TODO in multilayer version, add AttnHead class beneath AttnLayer class? forward pass is just loop over nlayer
 
         # attention matrices (need to split by head...)
         self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")

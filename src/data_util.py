@@ -89,23 +89,6 @@ def data_train_test_split_util(
     verbose=True,
     rng=None,
 ):
-    """
-    Used commonly by data_train_test_split_* functions - for * = {linear, clusters, manifold}
-
-    TODO make it so test ratio 1.0 or 0.0 makes the corresponding array empty (as opposed to nasty if/else currently)
-    """
-    if verbose:
-        print(
-            "Generating train/test data for NN training (context length = %d)..."
-            % context_len
-        )
-        print(
-            "\tcontext_len=%d, dim_n=%d, num_W_in_dataset=%d, examples_per_W=%d, test_ratio=%s"
-            % (context_len, dim_n, num_W_in_dataset, context_examples_per_W, test_ratio)
-        )
-        print("\tnsample_per_subspace (context_len):", context_len)
-        print("Total dataset size before split: %d (x,y) pairs" % len(y_total))
-
     x_total = np.array(x_total).astype(np.float32)
     y_total = np.array(y_total).astype(np.float32)
 
@@ -132,29 +115,6 @@ def data_train_test_split_util(
         for idx, val in enumerate(train_indices):
             train_data_subspaces[idx] = data_subspace_dict[val].copy()
 
-        if verbose:
-            print("\t x_train:", x_train.shape)
-            print("\t y_train:", y_train.shape)
-            print("\t x_test: None")
-            print("\t y_test: None")
-
-        if savez_fname is not None:
-            assert savez_fname[-4:] == ".npz"
-            # save dataset to file
-            dataset_fpath = savez_fname
-            print("\nSaving dataset to file...", dataset_fpath)
-            np.savez_compressed(
-                dataset_fpath,
-                x_train=x_train,
-                y_train=y_train,
-                x_test=np.empty(1),
-                y_test=np.empty(1),
-            )
-
-        if as_torch:
-            x_train = torch.from_numpy(x_train)
-            y_train = torch.from_numpy(y_train)
-
     else:
         ntest = int(test_ratio * ntotal)
         ntrain = ntotal - ntest
@@ -177,31 +137,6 @@ def data_train_test_split_util(
             train_data_subspaces[idx] = data_subspace_dict[val].copy()
         for idx, val in enumerate(test_indices):
             test_data_subspaces[idx] = data_subspace_dict[val].copy()
-
-        if verbose:
-            print("\t x_train:", x_train.shape)
-            print("\t y_train:", y_train.shape)
-            print("\t x_test:", x_test.shape)
-            print("\t y_test:", y_test.shape)
-
-        if savez_fname is not None:
-            assert savez_fname[-4:] == ".npz"
-            # save dataset to file
-            dataset_fpath = savez_fname
-            print("\nSaving dataset to file...", dataset_fpath)
-            np.savez_compressed(
-                dataset_fpath,
-                x_train=x_train,
-                y_train=y_train,
-                x_test=x_test,
-                y_test=y_test,
-            )
-
-        if as_torch:
-            x_train = torch.from_numpy(x_train)
-            y_train = torch.from_numpy(y_train)
-            x_test = torch.from_numpy(x_test)
-            y_test = torch.from_numpy(y_test)
 
     return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
 
@@ -246,20 +181,6 @@ def data_train_test_split_linear(
         g(x_q) = mu + P (x_q - mu)  where  P_W = V (V^T V)^-1 V^T defines the projection onto underlying vector space
                                             mu = mean(x_1, ..., x_L)
     """
-    print("data_train_test_split_linear() args...")
-    print("\tstyle_subspace_dimensions:", style_subspace_dimensions)
-    print("\tstyle_origin_subspace:", style_origin_subspace)
-    print("\tstyle_corruption_orthog:", style_corruption_orthog)
-    print("\tcontext_len:", context_len)
-    print("\tdim_n:", dim_n)
-    print("\tnum_W_in_dataset:", num_W_in_dataset)
-    print("\tcontext_examples_per_W:", context_examples_per_W)
-    print("\tsamples_per_context_example:", samples_per_context_example)
-    print("\tsigma_corruption:", sigma2_corruption)
-    print("\tsigma_pure_context:", sigma2_pure_context)
-    print("\tcorr_scaling_matrix:", corr_scaling_matrix)
-    print("\tseed:", seed)
-    print("\tsavez_fname:", savez_fname)
 
     assert samples_per_context_example == 1
 
@@ -279,8 +200,7 @@ def data_train_test_split_linear(
         dim_d_k = np.random.randint(
             1, min(dim_n, context_len // 2), size=num_W_in_dataset
         )
-    print("data_train_test_split_linear(...)")
-    print("\tstyle_subspace_dimensions=%s" % style_subspace_dimensions)
+
     print("\tdim_d_k min/max:", dim_d_k.min(), dim_d_k.max())
 
     nsample_per_subspace = context_len  # alias | this is the length of the input sequence for sequence model
@@ -685,13 +605,3 @@ def data_train_test_split_linear(
 #     )
 
 #     return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
-
-
-def reload_lossbaseline_dict(dir_replot):
-    with open(dir_replot + os.sep + "loss_baselines.txt") as f:
-        loss_baselines_dict = {}
-        lines = [a.strip() for a in f.readlines()]
-        for lstr in lines:
-            a, b_str = lstr.split(",")
-            loss_baselines_dict[a] = float(b_str)
-        return loss_baselines_dict
