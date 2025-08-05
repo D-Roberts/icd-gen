@@ -1,6 +1,6 @@
 # models imported from HF TODO@DR - get other models, likely image
 model:
-    type: gpt2 
+    type: notgpt2 #gpt2 
     n_embd: 256 #these dims are for the gpt2 
     n_layer: 12
     n_head: 8

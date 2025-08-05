@@ -9,7 +9,7 @@
     *6. Refactor archis to: 1. Implement exactly the archi in the theory section. 2. Allow for log of 
     last layer activations and arg to last layer softmax. For the theoretical 2-layer, possibly do not
     linearize softmax.
-    *7. Refactor energy and grad fn with torch not numpy.
+    *7. Refactor energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
     *8. Torchify out of numpy pretty much everything up until matplotlib.
     *9. to be cont.
     

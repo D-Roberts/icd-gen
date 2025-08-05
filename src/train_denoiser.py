@@ -470,8 +470,9 @@ def train(model, args):
             )
 
             curve_y_losstrain_batch.append(loss)
-            batch_energies.append(energy)
-            batch_energy_grads.append(energy_grad)
+
+            # batch_energies.append(energy)
+            # batch_energy_grads.append(energy_grad)
 
             # print statistics
             running_loss_epoch += curve_y_losstrain_batch[-1]
@@ -489,6 +490,14 @@ def train(model, args):
 
             running_batch_counter += 1
             exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
+            exp.log_metrics(
+                {"batch energy 1 training example": energy.mean()},
+                step=running_batch_counter,
+            )
+            exp.log_metrics(
+                {"batch energy grad 1 training example": energy_grad.mean()},
+                step=running_batch_counter,
+            )
 
         if args.training["scheduler_kwargs"]["choice"] == "cosine":
             scheduler.step()  # step the learning rate; if not cosine then no scheduler

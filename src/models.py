@@ -37,7 +37,7 @@ def weight_matrix(dim_in, dim_out, mode="default"):
 
 # This is for HF models
 def build_model(conf):
-    if conf["family"] == "gpt2":
+    if conf["type"] == "gpt2":
         model = TransformerModel(
             n_dims=conf["n_dims"],
             n_positions=conf["n_positions"],
@@ -53,7 +53,7 @@ def build_model(conf):
 
 # this is from icl stfd code to work with the HuggingFace TODO@DR Note that if I want to strip the model of more things,
 # there are more in the HF config. But at a certain point i'll have to take the clone down and hack into it again
-# same with diffusers
+# same with diffusers and/or transformer backbones
 class TransformerModel(nn.Module):
     def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
         super(TransformerModel, self).__init__()
@@ -78,8 +78,8 @@ class TransformerModel(nn.Module):
         # some transformer frozen weights and not trainable
 
         # print("GPT2 decoder model parameters:")
-        m = self._backbone
-        for name, param in m.parameters():
+
+        for param in self._backbone.parameters():
             param.requires_grad = False
 
         self._read_out = nn.Linear(n_embd, 1)
