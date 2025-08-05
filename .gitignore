@@ -358,3 +358,5 @@ artifacts
 input
 
 step_by_step_nlm.py
+step_by_step_cov_decay.py
+graph_play.py
