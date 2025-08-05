@@ -17,6 +17,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
+from energies import *
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -34,12 +35,12 @@ exp = comet_ml.Experiment(
 from transformers.optimization import get_cosine_schedule_with_warmup
 
 from baselines import (
-    loss_if_predict_zero,
+    # loss_if_predict_zero,
     loss_if_predict_average,
     loss_if_predict_mostrecent,
-    loss_if_predict_linalg,
-    loss_if_predict_linalg_shrunken,
-    theory_linear_expected_error,
+    # loss_if_predict_linalg,
+    # loss_if_predict_linalg_shrunken, # TODO@DR: put this back
+    # theory_linear_expected_error, # TODO@DR: put this back
 )
 from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
 from vis_utils import vis_weights_kq_pv, vis_loss, vis_weights_grad_kq_pv
@@ -92,12 +93,28 @@ DATASET_CASES = {0: "Linear", 2: "Manifold (sphere)"}
 
 
 def train_step(model, xs, ys, optimizer, loss_func):
+    """the energy depends on some hyperparameters
+    which have some simplest heuristic values hardcoded right now.
+
+    """
     optimizer.zero_grad()
     # output = model(xs, ys)
     output_full, attn_arg = model(xs)
     output = output_full[:, :, -1]
+
+    X = output_full[:, :, :-1]  # all but the last token
     # print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
     loss = loss_func(output, ys)
+
+    # I want also the energy and its gradient here
+    # TODO@DR: these are for one training example in batch until I refactor
+    # the energy and grad_energy to be vectorized and torchified
+    one_eg_q = output[0, :].squeeze().detach().cpu().numpy()
+    one_eg_X = X[0, :, :].squeeze().detach().cpu().numpy()
+
+    en = energy(q=one_eg_q, X=one_eg_X, c_lambda=1.0, beta=1.0, c_k=1.0)
+    grad_en = grad_energy(q=one_eg_q, X=one_eg_X, c_lambda=1.0, beta=1.0, c_k=1.0)
+
     loss.backward()
     optimizer.step()
     return (
@@ -105,6 +122,8 @@ def train_step(model, xs, ys, optimizer, loss_func):
         output.detach(),
         output_full.detach(),
         attn_arg.detach(),
+        en,
+        grad_en,
     )
 
 
@@ -406,6 +425,9 @@ def train(model, args):
     curve_y_losstrain_batch = (
         []
     )  # we begin tracking AFTER the first batch (could get loss nograd first batch here)
+    batch_energies = []
+    batch_energy_grads = []
+
     curve_y_losstest_interval = [
         test_full_mse_loss
     ]  # will append to this each full_loss_sample_interval batches
@@ -439,11 +461,17 @@ def train(model, args):
             #     "targets shape and device", targets.shape, targets.device
             # )  # (batch size, n dim of last token)
 
-            loss, output, output_full, attn_arg = train_step(
-                model, inputs.to(device), targets.to(device), optimizer, loss_func
+            loss, output, output_full, attn_arg, energy, energy_grad = train_step(
+                model,
+                inputs.to(device),
+                targets.to(device),
+                optimizer,
+                loss_func,
             )
 
             curve_y_losstrain_batch.append(loss)
+            batch_energies.append(energy)
+            batch_energy_grads.append(energy_grad)
 
             # print statistics
             running_loss_epoch += curve_y_losstrain_batch[-1]
@@ -610,7 +638,7 @@ def train(model, args):
 
 
 def main(args):
-    if args.model["family"] in {"gpt2"}:
+    if args.model["type"] in {"gpt2"}:
         model = build_model(args.model)
     else:
         model = TransformerModelV2(args.training["context_len"], args.training["dim_n"])
@@ -632,7 +660,7 @@ def main(args):
         test_data_subspaces,
     ) = train(model, args)
 
-    if args.model["family"] not in {"gpt2"}:
+    if args.model["type"] not in {"gpt2"}:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
 
@@ -694,27 +722,27 @@ def main(args):
         )
 
         # plot with the baselines
-        img_path_loss_baselines = vis_loss(
-            loss_vals_dict=loss_vals_dict,
-            titlemod="with baselines",
-            dir_out=io_dict["dir_vis"],
-            fname="Train Test Losses and Baselines",
-            flag_show=args.training["flag_vis_weights"],
-        )
-        img = Image.open(img_path_loss_baselines)
+        # TODO@DR: this broke; fix
 
-        exp.log_image(
-            image_data=img,
-            name="loss baselines.png",
-            image_format="png",
-            step=0,
-        )
+        # img_path_loss_baselines = vis_loss(
+        #     loss_vals_dict=loss_vals_dict,
+        #     titlemod="with baselines",
+        #     dir_out=io_dict["dir_vis"],
+        #     fname="Train Test Losses and Baselines",
+        #     flag_show=args.training["flag_vis_weights"],
+        # )
+        # img = Image.open(img_path_loss_baselines)
+
+        # exp.log_image(
+        #     image_data=img,
+        #     name="loss baselines.png",
+        #     image_format="png",
+        #     step=0,
+        # )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Arguments for the denoising icl task, data gen, train, and eval."
-    )
+    parser = argparse.ArgumentParser(description="Arguments for the icd-gen task.")
     parser.add_argument("--config-file", help="Path to YAML config file")
 
     args = parser.parse_args()
@@ -723,7 +751,8 @@ if __name__ == "__main__":
         with open(args.config_file, "r") as f:
             config = yaml.safe_load(f)
             parser.set_defaults(**config)
-        args = parser.parse_args()  # Reload arguments to apply YAML values
+        # Reload arguments to apply YAML values
+        args = parser.parse_args()
 
     # print(f"Running with: {args}")
     # exp.log_parameters(args)

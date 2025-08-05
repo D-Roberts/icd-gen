@@ -74,10 +74,13 @@ class TransformerModel(nn.Module):
         self._read_in = nn.Linear(n_dims, n_embd)
         self._backbone = GPT2Model(configuration)
 
+        # TODO@DR: aim for these at the current time to be
+        # some transformer frozen weights and not trainable
+
         # print("GPT2 decoder model parameters:")
-        # m = self._backbone
-        # for name, param in m.state_dict().items():
-        #     print(f"Layer: {name}, Shape: {param.shape}")
+        m = self._backbone
+        for name, param in m.parameters():
+            param.requires_grad = False
 
         self._read_out = nn.Linear(n_embd, 1)
 
@@ -174,6 +177,11 @@ class TransformerModelV1noresOmitLast(TransformerModelV1):
 
 
 # TODO@DR: This will be exactly the baseline from ic-denoiser paper
+# TODO@DR: I will need some other theoretical baselines for new
+# problems. Keep one theoretical baseline, the shrunken, to show
+# the one layer fails when .. something that preserves the theoretical
+# baseline - such as noise change train to test or pure distribtion shift
+# I still want to see this trained side by side with the new models
 class TransformerModelV2(nn.Module):
     """
     Simplified attention only 1 layer and softmax;
@@ -1344,10 +1352,6 @@ MODEL_CLASS_FROM_STR = {
         "alias": "TV1nrFDOL",
     },
     "TransformerModelV2": {"class": TransformerModelV2, "alias": "TV2"},
-    "TransformerModelV2noresOmitLast": {
-        "class": TransformerModelV2noresOmitLast,
-        "alias": "TV2nrOL",
-    },
     "TransformerModelV3noresOmitLast": {
         "class": TransformerModelV3noresOmitLast,
         "alias": "TV3nrOL",

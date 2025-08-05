@@ -23,8 +23,8 @@ class DatasetWrapper(Dataset):
         self.x = X
         self.y = Y
 
-        self.dim_n = self.x.size()[1]
-        self.context_length = self.x.size()[2]
+        self.dim_n = self.x.shape[1]
+        self.context_length = self.x.shape[2]
 
     # Mandatory: Get input pair for training
     def __getitem__(self, idx):
@@ -32,7 +32,7 @@ class DatasetWrapper(Dataset):
 
     # Mandatory: Number of elements in dataset (i.e. size of batch dimension 0)
     def __len__(self):
-        X_len = self.x.size()[0]
+        X_len = self.x.shape[0]
         return X_len
 
     # This function is not needed
