@@ -40,4 +40,4 @@ def grad_energy(q, X, c_lambda, beta, c_k):
     return c_lambda * q - X @ a
 
 
-# TODO@DR:
+# TODO@DR: vectorize and torchify all

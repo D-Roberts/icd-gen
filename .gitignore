@@ -339,11 +339,7 @@ dmypy.json
 
 # Caches and Datasets
 cache/
-data/
-smart-data/
-small-data/
-small-runs/
-final-runs/
+
 
 # secrets
 .hf_token
@@ -359,4 +355,5 @@ input
 
 step_by_step_nlm.py
 step_by_step_cov_decay.py
-graph_play.py
+
+

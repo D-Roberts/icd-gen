@@ -74,6 +74,15 @@ training:
     nwork: 0
     skip_PCA_heuristic_slow: True
 
+
+
+nlmeans:
+    nlm_k: 8
+    nlm_h: 0.1
+    nlm_patch_size: 4
+    nlm_search_size: 8
+    nlm_stride: 4
+
 # settings for visualization paper-like
 vis:
     COLOR_TARGET: '#97C6CF'
