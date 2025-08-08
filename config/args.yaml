@@ -82,10 +82,10 @@ gamma:
     
 spatial_datagen:
     D: 4 # num patches
-    L: 2 # number of groups of patches in partition
-    C: 2 # group/set dimension = number of patches in group; patches can be contig or not
-    
-
+    L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
+    q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
+    #for it
+   
 
 # settings for visualization paper-like
 vis:
