@@ -246,4 +246,8 @@ embed_patches = patch_embedder(instance.reshape(b_size, 1, im_size, 2 * im_size)
 
 # Then we would add the embeddings together
 input_embed = pos_embed + embed_patches
-print(input_embed.shape)  # (batc, num patches or seq len, embed dim)
+print(input_embed.shape)  # (batc, num patches or seq len of fused patches, embed dim)
+
+
+# ********************** then I'd denoise the query only (the query is given noised)
+# ********************** Also test on pure noise query to see what happens.
