@@ -8,6 +8,7 @@ beyond normal.
 """
 import torch
 from torch.distributions import MultivariateNormal
+from torch.distributions import Gamma
 import torch.nn as nn
 
 
@@ -89,12 +90,18 @@ class GaussianSampler(DataSampler):
 
 
 # Ad-hoc Test
-im_gen = GaussianSampler(32)
-d1 = im_gen.sample_xs(b_size=3, seeds=[0, 1, 2])
+b_size = 3
+im_size = 32
+patch_dim = 16
+gamma_alpha = 2.0
+gamma_beta = 1.0
+
+im_gen = GaussianSampler(im_size)
+d1 = im_gen.sample_xs(b_size=b_size, seeds=[0, 1, 2])
 print(d1.shape)
 # reshape im_tensor to (batch_size, channels, height, width)
 d1_reshaped = d1.unsqueeze(1)
-patch_dim = 16
+
 patches = im_gen.patchify(
     d1_reshaped, patch_size=(patch_dim, patch_dim), stride=(patch_dim, patch_dim)
 )  # assume square patches non-overlapping from
@@ -117,5 +124,38 @@ print(f"Shape after reshaping: {reshaped_patches.shape}")
 # I am assuming grey scale and remove the channel dim until needed
 patches = reshaped_patches.squeeze(2)
 
-print(patches.shape)
-# print(patches) # 3 batches with 4 patches each
+print(patches.shape)  # (batch, num_p, patch_dim, patch_dim)
+# print(patches) # 3 batches with 4 patches in total each
+# This is the sequence of patches from topleft to bottomright
+
+# --------------------------
+# add some gamma noise to all patches to get Ys sequence;
+# this is multiplicative noise.
+# Define the parameters of the Gamma distribution
+concentration_param = torch.tensor([gamma_alpha])  # Alpha (shape parameter)
+rate_param = torch.tensor([gamma_beta])  # Beta (rate parameter)
+
+# Create a Gamma distribution object
+gamma_dist = Gamma(concentration=concentration_param, rate=rate_param)
+
+# Sample from the distribution
+# You can specify the number of samples you want to draw
+noise_samples = gamma_dist.sample((b_size,))
+
+# print(f"Gamma samples: {samples}") # works
+# note that gamma noise is always positive; it is multiplicative noise
+# gamma distribution is in the exponential family
+# To add gamma noise to an image, you would typically multiply the image by the sampled noise
+# X= VY where V is gamma noise
+# For example, if 'image_tensor' is your image in tensor form:
+# noisy_image = image_tensor * samples.view(-1, 1, 1)
+# Make sure to adjust the shape of 'samples' to match the dimensions of 'image_tensor.
+
+# noise all the patches to get labels
+noisy_seq = patches * noise_samples.view(-1, 1, 1, 1)
+print(noisy_seq.shape)
+
+# THe prompt and query will be (y1,x1,y2,x2,y3,x3,y4) and predict x4- clean
+# to construct train and test dataset, label will be x4.
+# where y are the noised; we aim to learn distribution through noise-clean
+# associations as well as patch structure; for this - must have positions
