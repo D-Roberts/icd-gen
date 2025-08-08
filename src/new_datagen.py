@@ -6,10 +6,12 @@ abstract class to possibly work with in a more flexible/general datagen way
 beyond normal.
 
 """
+import numpy as np
 import torch
 from torch.distributions import MultivariateNormal
 from torch.distributions import Gamma
 import torch.nn as nn
+import math
 
 
 class DataSampler:
@@ -159,3 +161,89 @@ print(noisy_seq.shape)
 # to construct train and test dataset, label will be x4.
 # where y are the noised; we aim to learn distribution through noise-clean
 # associations as well as patch structure; for this - must have positions
+
+# concatenate clean and noisy patches into sequence of concatenated
+# shape (batchsize, num_patches, patch_dim, 2*patch_dim)
+instance = torch.cat((noisy_seq, patches), dim=-1)
+print(instance.shape)
+
+
+# TODO@DR consider getting overlapping patches more similarly to NL Means
+
+
+# An example patch embedding - will change later
+# now the sequence has double width due to concat clean and noisy
+class PatchEmbedding(nn.Module):
+    def __init__(self, embed_dim, patch_size, num_patches, in_channels=1):
+        super().__init__()
+        self.patch_size = patch_size
+        # aim to embed the clean and noisy together
+        # set bias to zero
+        self.projection = nn.Conv2d(
+            in_channels=1,
+            out_channels=embed_dim,
+            kernel_size=patch_size,
+            stride=(patch_size, 2 * patch_size),
+            padding=0,
+            dilation=1,
+            groups=1,
+            bias=False,
+            padding_mode="zeros",
+            device=None,
+            dtype=None,
+        )
+        self.num_patches = num_patches
+
+    def forward(self, x):
+        x = self.projection(x)  # (batch_size, embed_dim, num_patches_h, num_patches_w)
+        x = x.flatten(2).transpose(1, 2)  # (batch_size, num_patches, embed_dim)
+        return x
+
+
+class SinusoidalPositionalEmbedding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        # TODO@DR check for correctness again
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        # print("torch.sin(position * div_term)", torch.sin(position * div_term).shape)
+        # print("pe[:, 0::2]", pe[:, 0::2].shape)
+        # print("pe[:, 1::2]", pe[:, 1::2].shape)
+
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+
+        # print("pe shape", pe.shape)
+        self.register_buffer("pe", pe.unsqueeze(0))  # Add a batch dimension
+
+    def forward(self, x):
+        # x is the sequence of patch embeddings, shape (batch_size, seq_len, d_model)
+        # We need to add positional embeddings to each element in the sequence
+        # for the moment only create the pos embeddings
+
+        return self.pe[:, : x.size(1)]
+
+
+# Either this or simply time step embedding
+pos_embed_dim = 8
+pos_embed = SinusoidalPositionalEmbedding(pos_embed_dim, max_len=instance.shape[1])(
+    instance
+)
+# print("pos embed shape", pos_embed.shape) # first dim is batch, the time dim / pos is the same for each batch
+
+# these will be added to the image patch embedding
+
+patch_embedder = PatchEmbedding(
+    embed_dim=8, patch_size=16, num_patches=instance.shape[1]
+)
+# reshape into a shape of image with w double h
+embed_patches = patch_embedder(instance.reshape(b_size, 1, im_size, 2 * im_size))
+
+# print(embed_patches.shape) #(batch, num_patches, embed_dim)
+
+# Then we would add the embeddings together
+input_embed = pos_embed + embed_patches
+print(input_embed.shape)  # (batc, num patches or seq len, embed dim)
