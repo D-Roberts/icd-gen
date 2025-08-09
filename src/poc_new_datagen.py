@@ -33,18 +33,6 @@ class DataSampler:
         return patches
 
 
-def get_data_sampler(data_name, n_dims, **kwargs):
-    names_to_classes = {
-        "gaussian": GaussianSampler,
-    }
-    if data_name in names_to_classes:
-        sampler_cls = names_to_classes[data_name]
-        return sampler_cls(n_dims, **kwargs)
-    else:
-        print("Unknown sampler")
-        raise NotImplementedError
-
-
 class GaussianSampler(DataSampler):
     """Generate one image-like tensor to patchify later.
     Args:
@@ -168,9 +156,6 @@ instance = torch.cat((noisy_seq, patches), dim=-1)
 print(instance.shape)
 
 
-# TODO@DR consider getting overlapping patches more similarly to NL Means
-
-
 # An example patch embedding - will change later
 # now the sequence has double width due to concat clean and noisy
 class PatchEmbedding(nn.Module):
@@ -247,7 +232,3 @@ embed_patches = patch_embedder(instance.reshape(b_size, 1, im_size, 2 * im_size)
 # Then we would add the embeddings together
 input_embed = pos_embed + embed_patches
 print(input_embed.shape)  # (batc, num patches or seq len of fused patches, embed dim)
-
-
-# ********************** then I'd denoise the query only (the query is given noised)
-# ********************** Also test on pure noise query to see what happens.

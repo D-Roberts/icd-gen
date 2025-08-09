@@ -109,7 +109,9 @@ print("jacob is ", jacob[0][0][0][:].view((4, 4)))  # this should be square
 jacob_trace = torch.trace(jacob[0][0][0][:].view((4, 4)))
 
 # TODO@DR: double check that jacob calculates what is necessary if I use this
-# Also
+
+# Also - really mse is not appropriate for gamma noise; neither is SURE
+
 sloss = sureloss(preds, label, jacob_trace)
 
 # TODO@DR - now with Gamma consider MAE, Jensen-SH, or GMMAD (median based) losses
