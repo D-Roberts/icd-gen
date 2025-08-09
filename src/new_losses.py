@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn.functional as F
+from vit_spatial_poc import net
 
 
 def JSD(p, q, reduction: str = "batchmean") -> torch.Tensor:
