@@ -22,13 +22,6 @@ DATAGEN_GLOBALS:
         sigma2_pure_context: 2.0                  # controls radius of ball of pure of samples (default: 2.0)
         corr_scaling_matrix: None                 # x = Pz; y = A x  \tilde x = A (x + z); (normally identity I_n)
 
-    manifold:
-        sigma2_corruption: 0.5                # applies to all cases
-        style_corruption_orthog: False        # mandatory for this case
-        style_origin_subspace: True           # mandatory for this case
-        style_subspace_dimensions: random   # int or 'random'
-        # parameters specific to the Manifold case
-        radius_sphere: 1.0                  # controls radius of sphere (d-dim manifold S in R^n)
     
     drift_noise_sigma_train_test_linear:  # DR: the only difference from the linear case0 is the drift in added noise std
         sigma2_corruption_train: 0.1                  
@@ -37,25 +30,40 @@ DATAGEN_GLOBALS:
         style_origin_subspace: True               
         style_subspace_dimensions: 8        
         sigma2_pure_context: 2.0                  
-        corr_scaling_matrix: None                 
+        corr_scaling_matrix: None        
+
+        
+    # new data generation to exploit vit patch association learning in context
+    # and gamma noise
+   
+    
+    grouped_patches:
+        datagen:
+            D: 4 # num patches
+            L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
+            q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
+            #for it
+            N: 1000 # train dataset size
+            d: 4 # patch size
+
+        gamma:
+            galpha: [2.26, 3.62] # per group of patches gamma noise distrib param
+            gbeta: [1.5, 0.8]  # per group of patchesl these could be sampled in ablation
+            
 
 
 
 training:
-    task: TBD
     batch_size: 80
     learning_rate: 0.01
     period_save_weights: 4
     train_steps:
-    resume_id:
     epochs: 4
-    optimizer_choice: adamw # DR: only one choice bc if no wd basically adam
-    wd: 0.0 # weight decay in adamw
+    optimizer_choice: adamw 
+    wd: 0.0 # weight decay in adamw; add some since vit likes either this or sgd with mom
     scheduler_kwargs:
-        choice: cosine # cosine or None
+        choice: cosine # cosine or None; works best
         warmup: 1 # num warmup steps for cosine scheduler
-    restart_nn_instance: #instance of a sequence model class (e.g. TransformerModelV1)
-    restart_dataset: #(None) or 6-tuple (X_train, y_train, X_test, y_test, train_dict, test_dict) for dataset
     nn_model: TransformerModelV1noresOmitLast #string for a sequence model class (e.g. 'TransformerModelV1')
     context_len: 500 #(default: 500) int, context length of input token sequence (X.shape[-1])
     dim_n: 32 #(default: 32) int, ambient dimension
@@ -73,23 +81,3 @@ training:
     test_ratio: 0.2
     nwork: 0
     skip_PCA_heuristic_slow: True
-
-
-# new data generation to exploit vit patch association learning in context
-gamma:
-    galpha: [2.26, 3.62] # per group of patches gamma noise distrib param
-    gbeta: [1.5, 0.8]  # per group of patches TODO@DR these could be sampled 
-    # in ablation
-    
-spatial_datagen:
-    D: 4 # num patches
-    L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
-    q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
-    #for it
-   
-
-# settings for visualization paper-like
-vis:
-    COLOR_TARGET: '#97C6CF'
-    COLOR_PRED: '#89C09F'
-    COLOR_INPUT: '#E9B24C'

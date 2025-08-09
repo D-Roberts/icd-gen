@@ -358,3 +358,6 @@ step_by_step_cov_decay.py
 src/eg_nlm_scikit.py
 graph_play.py
 vit_spatial_poc.py
+src/test_their_make_data.py
+
+src/data
