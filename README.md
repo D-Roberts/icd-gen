@@ -55,3 +55,4 @@ Initial code references:
 * https://github.com/jiachenzhu/DyT
 * https://github.com/huggingface/transformers/tree/main/src/transformers
 * https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
+* https://github.com/LabForComputationalVision/memorization_generalization_in_diffusion_models/tree/main

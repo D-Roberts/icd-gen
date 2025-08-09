@@ -78,7 +78,8 @@ training:
 # new data generation to exploit vit patch association learning in context
 gamma:
     galpha: [2.26, 3.62] # per group of patches gamma noise distrib param
-    gbeta: [1.5, 0.8]  # per group of patches
+    gbeta: [1.5, 0.8]  # per group of patches TODO@DR these could be sampled 
+    # in ablation
     
 spatial_datagen:
     D: 4 # num patches
