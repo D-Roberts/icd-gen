@@ -31,7 +31,7 @@ def JSD(p, q, reduction: str = "batchmean") -> torch.Tensor:
     return jsd
 
 
-# test JSD
+# test JSD - TODO@DR put log_softmax in and use it.
 log_probs_p = F.log_softmax(torch.randn(10, 5), dim=-1)
 log_probs_q = F.log_softmax(torch.randn(10, 5), dim=-1)
 print(log_probs_p.shape)
@@ -108,11 +108,10 @@ jacob = jacrev(net, argnums=0)(x)  # recall that right now the net is still set 
 print("jacob is ", jacob[0][0][0][:].view((8, 8)))  # this should be square
 jacob_trace = torch.trace(jacob[0][0][0][:].view((8, 8)))
 
-# TODO@DR: double check that jacob calculates what is necessary if I use this
-
-# Also - really mse is not appropriate for gamma noise; neither is SURE
-
 sloss = sureloss(preds, label, jacob_trace)
 print(f"poc SURE loss is {sloss}")
 
+
+# TODO@DR: double check that jacob calculates what is necessary if I use this
+# Also - really mse is not appropriate for gamma noise; neither is SURE
 # TODO@DR - now with Gamma consider MAE, Jensen-SH, or GMMAD (median based) losses

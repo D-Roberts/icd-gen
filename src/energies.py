@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 
-# DR: these are not vectorized
+# DR: these are not vectorized and not torch
 def logsumexp(z):
     """z is a 1D numpy array
     Computes the log of the sum of exponentials of input elements.

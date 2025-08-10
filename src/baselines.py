@@ -3,13 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import softmax as scipy_softmax
 
-from data_gen_denoise import (
-    proj_affine_subspace_estimator,
-    bessel_ratio_subhalf_sub3half,
-)
-from torch.utils.data.sampler import SequentialSampler
 
-
+# for linear
 def theory_linear_expected_error(
     dim_n, W_dim_d, sigma2_corruption, sigma2_pure_context
 ):

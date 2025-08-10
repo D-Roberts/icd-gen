@@ -1,6 +1,9 @@
 ## WIP - codebase under development
 
 ### TODO@DR next:
+
+    *0. Code for models on the new patch structure datagen (priority 1)
+
     *1. factor in the noise drift code from my other repo
     *2. there is a bug in the plot loss baselines code
     *3. there might be a bug in the batch loss calculation and/or plotting
@@ -44,7 +47,7 @@ Clean up dirs with
 Start Comet tracking (Comet is like wandb; used in industry):
 https://www.comet.com/ai-daor/icd-gen/view/new/panels
 
-* Track losses and save artifacts results outputs params plots and images per experiment. Clean code and to train properly if I move to more real models and not just toy.
+* Track losses and save artifacts results outputs params plots and images per experiment. Clean code and to train properly when I move to more real models and not just toy.
 
 * To be able to create your own experiments, a Comet API Key must be created and placed in the icd-gen/.comet_api file and a Comet account username must be written to icd-gen/.comet_workspace, replacing the credentials I made public in this repo.
 
@@ -56,3 +59,4 @@ Initial code references:
 * https://github.com/huggingface/transformers/tree/main/src/transformers
 * https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 * https://github.com/LabForComputationalVision/memorization_generalization_in_diffusion_models/tree/main
+* VIT learn spatial struct https://proceedings.neurips.cc/paper_files/paper/2022/hash/f69707de866eb0805683d3521756b73f-Abstract-Conference.html

@@ -4,13 +4,9 @@ model:
     n_embd: 256 #these dims are for the gpt2 
     n_layer: 12
     n_head: 8
-    n_dims: 8 #these should be the d in subspace dimension though I'll probably do different datagen
+    n_dims: 8  
     n_positions: 500 #TODO@DR prep for position embeddings these would be the context+target like in ADPM
 
-data:
-    datagen_case: 0   #0 or 1 for linear or manifold (DR: which was 2 for them; I am skipping mixture)
-    datagen_kwargs: {} #(default: settings.py) dict of kwargs for data generation
-    datagen_seed: 0 #or None or 15 or 4
 
 DATAGEN_GLOBALS:
     linear:
@@ -21,9 +17,11 @@ DATAGEN_GLOBALS:
         # parameters specific to the Linear case
         sigma2_pure_context: 2.0                  # controls radius of ball of pure of samples (default: 2.0)
         corr_scaling_matrix: None                 # x = Pz; y = A x  \tilde x = A (x + z); (normally identity I_n)
-
+        
     
-    drift_noise_sigma_train_test_linear:  # DR: the only difference from the linear case0 is the drift in added noise std
+    drift_noise_sigma_train_test_linear:  
+    # DR: the only difference from the linear case0 is the shift in added noise 
+    # std from train to test
         sigma2_corruption_train: 0.1                  
         sigma2_corruption_test: 2.0   
         style_corruption_orthog: False           
@@ -33,45 +31,46 @@ DATAGEN_GLOBALS:
         corr_scaling_matrix: None        
 
         
-    # new data generation to exploit vit patch association learning in context
-    # and gamma noise
+# new data generation to exploit vit patch association learning in context
+# and gamma noise
    
     
-    grouped_patches:
-        datagen:
-            D: 4 # num patches
-            L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
-            q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
-            #for it
-            N: 1000 # train dataset size
-            d: 4 # patch size
+grouped_patches:
+    datagen:
+        D: 10 # num patches; this would be seq len
+        L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
+        q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
+        #for it
+        N: 1000 # train dataset size
+        d: 100 # patch size 10X10
 
-        gamma:
-            galpha: [2.26, 3.62] # per group of patches gamma noise distrib param
-            gbeta: [1.5, 0.8]  # per group of patchesl these could be sampled in ablation
-            
-
+    gamma:
+        galpha: [2.26, 3.62] # per group of patches gamma noise distrib param
+        gbeta: [1.5, 0.8]  # per group of patchesl these could be sampled in ablation
+        # both params > 0
+        # gamma noise is multiplicative and > 0; 
 
 
 training:
     batch_size: 80
     learning_rate: 0.01
+
     period_save_weights: 4
     train_steps:
+
+    loss: MSE # arg not used TODO@DR; MAE, SURE and Jens_Shan should be options
+
     epochs: 4
     optimizer_choice: adamw 
     wd: 0.0 # weight decay in adamw; add some since vit likes either this or sgd with mom
     scheduler_kwargs:
         choice: cosine # cosine or None; works best
         warmup: 1 # num warmup steps for cosine scheduler
-    nn_model: TransformerModelV1noresOmitLast #string for a sequence model class (e.g. 'TransformerModelV1')
-    context_len: 10 #(default: 500) int, context length of input token sequence (X.shape[-1])
-    dim_n: 200 #(default: 32) int, ambient dimension
+    nn_model: TransformerModelV2 
+    
+    
     seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
     train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
-    num_W_in_dataset: 1000
-    context_examples_per_W: 1
-    samples_per_context_example: 1
     full_loss_sample_interval: 4
     flag_save_dataset: False
     flag_vis_loss: False
@@ -80,4 +79,12 @@ training:
     flag_vis_grad: False
     test_ratio: 0.2
     nwork: 0
-    skip_PCA_heuristic_slow: True
+
+    linear: #for icml'25 icl denoise paper style
+        num_W_in_dataset: 1000
+        context_examples_per_W: 1
+        samples_per_context_example: 1
+        skip_PCA_heuristic_slow: True
+        context_len: 10 #(default: 500) int, context length of input token sequence (X.shape[-1])
+        dim_n: 200 #(default: 32) int, ambient dimension
+       

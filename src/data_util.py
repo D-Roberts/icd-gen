@@ -6,11 +6,10 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-from data_gen_denoise import (
+from dgen_linear import (
     gen_gaussian_data,
     gen_uniform_data,
     sample_from_subspace,
-    proj_affine_subspace_estimator,
 )
 
 

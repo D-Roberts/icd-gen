@@ -117,7 +117,7 @@ def vis_weights_kq_pv(
     return image_path
 
 
-# def vis_loss(dir_curves, titlemod="", dir_out=None, fname=None, flag_show=False):
+# TODO@DR: this is not working well right now.
 def vis_loss(loss_vals_dict, titlemod="", dir_out=None, fname=None, flag_show=False):
     plt.close("all")
     print("\nPlotting training loss dynamics...")
