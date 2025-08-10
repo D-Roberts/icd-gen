@@ -82,6 +82,8 @@ def report_dataset_psnr(
 ):
     # TODO@DR - this is just poc - can live with the non-torch for now
     psnr_total = 0
+    ssim_total = 0
+
     count = 0.0
     with torch.no_grad():
         for i, data in enumerate(dataloader, 0):
@@ -94,19 +96,42 @@ def report_dataset_psnr(
             # Very inneficient calc non-vectorized but this is small stuff
 
             for i in range(outputs.shape[0]):
-                one_psnr = peak_signal_noise_ratio(
-                    outputs[i].detach().cpu().numpy(), targets[i].detach().cpu().numpy()
+                clean = targets[i].detach().cpu().numpy()
+                denoised = outputs[i].detach().cpu().numpy()
+
+                one_psnr = peak_signal_noise_ratio(denoised, clean)
+
+                minv = min(np.min(denoised), np.min(clean))
+                maxv = max(np.max(denoised), np.max(clean))
+
+                one_ssim = structural_similarity(
+                    im1=clean,
+                    im2=denoised,
+                    gaussian_weights=True,
+                    data_range=maxv - minv,
+                    sigma=1.5,
+                    win_size=1,
+                    use_sample_covariance=False,
                 )
-                # print(f"one_psnr*****************{one_psnr}")
+
+                # print(f"one_ssim*****************{one_ssim}")
+
                 count += 1
                 psnr_total += one_psnr
+                ssim_total += one_ssim
 
     psnr_avg = psnr_total / count
+    ssim_avg = ssim_total / count
 
     print(
-        "\t%s avg psnr for test set: %.3e (batches=%d)" % (data_label, psnr_avg, count)
+        "\t%s avg psnr for test set: %.3e (instances=%d)"
+        % (data_label, psnr_avg, count)
     )
-    return psnr_avg
+    print(
+        "\t%s avg ssim for test set: %.3e (instances=%d)"
+        % (data_label, ssim_avg, count)
+    )
+    return psnr_avg, ssim_avg
 
 
 def data_train_test_split_util(
