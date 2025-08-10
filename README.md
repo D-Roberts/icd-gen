@@ -34,7 +34,7 @@ conda activate icd-gen
 ```
 * Modify args in config/args.yaml 
 
-* Run train
+* Run train from root of icd-gen dir
 ```
 python src/train_denoiser.py --config config/args.yaml
 ```

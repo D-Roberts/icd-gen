@@ -213,11 +213,10 @@ class GroupSampler(DataSampler):
             :, -1
         ] = 0.0  # 0 out last patch where the query is on the clean supervision
 
-        # also match the 0 in the label for same dim; now X_clean last is 0
-        # label = torch.cat((label, X_clean[:,-1]), dim=-1)
-
         # want to have dirty first in seq
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
+
+        # print(f"are dirty and clean diff? {X_dirty==X_clean}")
 
         return fused_seq, label
 

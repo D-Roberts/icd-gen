@@ -114,4 +114,7 @@ print(f"poc SURE loss is {sloss}")
 
 # TODO@DR: double check that jacob calculates what is necessary if I use this
 # Also - really mse is not appropriate for gamma noise; neither is SURE
+# because mixture of normal + gamma are another distrib; unless reason that
+# patchwise sums - CLT
+
 # TODO@DR - now with Gamma consider MAE, Jensen-SH, or GMMAD (median based) losses

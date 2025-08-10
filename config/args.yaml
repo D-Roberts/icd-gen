@@ -41,7 +41,7 @@ grouped_patches:
         L: 2 # number of groups of patches in partition; so then group/set dim is C=D/L
         q: 0.5 # now q is log(d)/D in make data to control SNR but might consider a param
         #for it
-        N: 1000 # train dataset size
+        N: 5000 # train dataset size
         d: 100 # patch size 10X10
 
     gamma:
@@ -52,7 +52,7 @@ grouped_patches:
 
 
 training:
-    batch_size: 80
+    batch_size: 256
     learning_rate: 0.01
 
     period_save_weights: 4
@@ -60,17 +60,17 @@ training:
 
     loss: MSE # arg not used TODO@DR; MAE, SURE and Jens_Shan should be options
 
-    epochs: 4
+    epochs: 5
     optimizer_choice: adamw 
     wd: 0.0 # weight decay in adamw; add some since vit likes either this or sgd with mom
     scheduler_kwargs:
         choice: cosine # cosine or None; works best
-        warmup: 1 # num warmup steps for cosine scheduler
-    nn_model: TransformerModelV2 
+        warmup: 0 # num warmup steps for cosine scheduler
+    nn_model: TransformerModelV2 #one attn layer with softmax
     
     
     seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
-    train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
+    train_plus_test_size: 5000 # settings for dataset construction + training (from their settings file)
     full_loss_sample_interval: 4
     flag_save_dataset: False
     flag_vis_loss: False

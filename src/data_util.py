@@ -50,8 +50,8 @@ def report_dataset_loss(
             samples, targets = data
             outputs_full, _ = net(samples.to(device))
             outputs = outputs_full[:, :, -1]
-            print(f"outputs shape **************{outputs.shape}")
-            print(f"targets shape **************{targets.shape}")
+            # print(f"outputs shape **************{outputs.shape}")
+            # print(f"targets shape **************{targets.shape}")
 
             if plot_some:
                 # visualization and debugging

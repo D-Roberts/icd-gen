@@ -180,9 +180,9 @@ def train(model, args):
     print("train_size", train_size)
 
     # just for save model
-    print(
-        f"What dataset is wrapped for training********{x_train.shape} and label {y_train.shape}"
-    )
+    # print(
+    #     f"What dataset is wrapped for training********{x_train.shape} and label {y_train.shape}"
+    # )
 
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
@@ -283,10 +283,13 @@ def train(model, args):
 
             running_batch_counter += 1
             exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
-            exp.log_metrics(
-                {"batch energy 1 training example": energy.mean()},
-                step=running_batch_counter,
-            )
+
+            # TODO@DR: Reason through energies later
+
+            # exp.log_metrics(
+            #     {"batch energy 1 training example": energy.mean()},
+            #     step=running_batch_counter,
+            # )
 
         if args.training["scheduler_kwargs"]["choice"] == "cosine":
             scheduler.step()  # step the learning rate; if not cosine then no scheduler
@@ -304,9 +307,9 @@ def train(model, args):
         img_path = vis_weights_kq_pv(
             output_full[-1, :, :].detach().cpu().numpy(),
             attn_arg[-1, :, :].detach().cpu().numpy(),
-            titlemod=f"activations final and attnarg last in epoch {epoch}",
+            titlemod=f"repres. final and intermed repres. last in epoch {epoch}",
             dir_out=io_dict["dir_vis"],
-            fname="activations final per epoch",
+            fname="representations final per epoch",
             flag_show=args.training["flag_vis_weights"],
         )
 
@@ -314,7 +317,7 @@ def train(model, args):
 
         exp.log_image(
             image_data=img,
-            name=f"attn_activations{epoch}.png",
+            name=f"attn_repres{epoch}.png",
             image_format="png",
             step=0,
         )
@@ -374,15 +377,12 @@ def main(args):
         net,
         model_fname,
         io_dict,
-        loss_vals_dict,
         train_loader,
         test_loader,
         x_train,
         y_train,
         x_test,
         y_test,
-        train_data_subspaces,
-        test_data_subspaces,
     ) = train(model, args)
 
     print(f"what did train on {x_train.shape}")
@@ -448,11 +448,11 @@ def main(args):
     )
 
     # Log groups from structured datagen
-    img = Image.open("artifacts/see_groups.png")
+    img = Image.open("see_groups.png")
 
     exp.log_image(
         image_data=img,
-        name=f"groups.png",
+        name=f"groups_built_in_datagen.png",
         image_format="png",
         step=0,
     )
