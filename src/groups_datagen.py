@@ -297,7 +297,8 @@ def grouped_data_train_test_split_util(
     )
 
 
-# Get train and test TODO@DR reason why do it this way vs generate a separate dataset
+# Get train and test TODO@DR reason why split train test it this way vs generate
+# a separate test dataset like in jelassi for the grouped case
 
 
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(

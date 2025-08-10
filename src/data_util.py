@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+from skimage.restoration import denoise_nl_means, estimate_sigma
 
 
 from dgen_linear import (
@@ -84,6 +85,9 @@ def report_dataset_psnr(
     psnr_total = 0
     ssim_total = 0
 
+    psnr_total_nlmeans = 0
+    ssim_total_nlmeans = 0
+
     count = 0.0
     with torch.no_grad():
         for i, data in enumerate(dataloader, 0):
@@ -92,13 +96,18 @@ def report_dataset_psnr(
             outputs = outputs_full[:, :, -1]
             # print(f"outputs shape **************{outputs.shape}")
             # print(f"targets shape **************{targets.shape}")
+            # print(f"samples shape************{samples.shape}")
 
             # Very inneficient calc non-vectorized but this is small stuff
 
             for i in range(outputs.shape[0]):
-                clean = targets[i].detach().cpu().numpy()
-                denoised = outputs[i].detach().cpu().numpy()
+                # remove the zero padding, reshape to square patch and add channel dim
+                clean = targets[i].detach().cpu().numpy()[:100].reshape((10, 10))
+                denoised = outputs[i].detach().cpu().numpy()[:100].reshape((10, 10))
+                # clean = clean[:, np.newaxis]
+                # denoised = denoised[:, np.newaxis]
 
+                # Metrics calculations model prediction
                 one_psnr = peak_signal_noise_ratio(denoised, clean)
 
                 minv = min(np.min(denoised), np.min(clean))
@@ -116,22 +125,80 @@ def report_dataset_psnr(
 
                 # print(f"one_ssim*****************{one_ssim}")
 
+                # and for nlmeans baseline; it requires a sigma calculation
+                sigma_est = np.mean(estimate_sigma(denoised, channel_axis=-1))
+                minv = min(np.min(denoised), np.min(clean))
+                maxv = max(np.max(denoised), np.max(clean))
+
+                # same for all but keeping kwargs close for clarity since this is
+                # pretty much toy code
+                patch_kw = dict(
+                    patch_size=5,  # 5x5 patches
+                    patch_distance=6,  # 13x13 search area
+                    channel_axis=-1,
+                    preserve_range=False,
+                )
+                # noisy query is in samples last; in fused patch first come dirty then comes clean
+                noisy = samples[i, :, -1].detach().cpu().numpy()[:100].reshape((10, 10))
+                # print(f"what is a noisy {noisy.shape}**************")
+
+                # TODO@DR: some normalizations for img specific val ranges
+
+                denoise2_fast = denoise_nl_means(
+                    noisy[:, np.newaxis],
+                    h=0.6 * sigma_est,
+                    sigma=sigma_est,
+                    fast_mode=True,
+                    **patch_kw
+                )
+                # print(f"what is a nlmeans denosied {denoise2_fast}**************")
+                # print(f"what is a clean {clean}**************")
+
+                # Metrics calculations nlmeans prediction
+                one_psnr_nlmeans = peak_signal_noise_ratio(
+                    denoise2_fast, clean, data_range=maxv - minv
+                )
+
+                one_ssim_nlmeans = structural_similarity(
+                    im1=clean,
+                    im2=denoise2_fast,
+                    gaussian_weights=True,
+                    data_range=maxv - minv,
+                    sigma=1.5,
+                    win_size=1,
+                    use_sample_covariance=False,
+                )
+
                 count += 1
                 psnr_total += one_psnr
                 ssim_total += one_ssim
 
+                psnr_total_nlmeans += one_psnr_nlmeans
+                ssim_total_nlmeans += one_ssim_nlmeans
+
     psnr_avg = psnr_total / count
     ssim_avg = ssim_total / count
 
+    nlmeans_psnr_avg = psnr_total_nlmeans / count
+    nlmeans_ssim_avg = ssim_total_nlmeans / count
+
     print(
-        "\t%s avg psnr for test set: %.3e (instances=%d)"
+        "\t%s avg learned model psnr for test set: %f (instances=%d)"
         % (data_label, psnr_avg, count)
     )
     print(
-        "\t%s avg ssim for test set: %.3e (instances=%d)"
+        "\t%s avg learned model ssim for test set: %f (instances=%d)"
         % (data_label, ssim_avg, count)
     )
-    return psnr_avg, ssim_avg
+    print(
+        "\t%s avg nlmeans  psnr for test set: %f (instances=%d)"
+        % (data_label, nlmeans_psnr_avg, count)
+    )
+    print(
+        "\t%s avg learned model ssim for test set: %f (instances=%d)"
+        % (data_label, nlmeans_ssim_avg, count)
+    )
+    return psnr_avg, ssim_avg, nlmeans_psnr_avg, nlmeans_ssim_avg
 
 
 def data_train_test_split_util(
