@@ -1,8 +1,8 @@
 """
-Data generation module for inputs with groups. Noising with gamma for 
+Data generation module for inputs with groups. Noising with gamma for
 the in-context sequence.
 
-@DR: note that there is a torch.distributions.exp_family.ExponentialFamily 
+@DR: note that there is a torch.distributions.exp_family.ExponentialFamily
 abstract class to possibly work with in a more flexible/general datagen way
 beyond normal.
 

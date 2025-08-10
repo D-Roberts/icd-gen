@@ -1,11 +1,12 @@
 """
 Patch generation module for new datagen strategies.
 
-@DR: note that there is a torch.distributions.exp_family.ExponentialFamily 
+@DR: note that there is a torch.distributions.exp_family.ExponentialFamily
 abstract class to possibly work with in a more flexible/general datagen way
 beyond normal.
 
 """
+
 import numpy as np
 import torch
 from torch.distributions import MultivariateNormal
