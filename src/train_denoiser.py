@@ -20,6 +20,7 @@ import scipy.linalg as la
 from energies import *
 from groups_datagen import x_train, y_train, x_test, y_test
 
+
 API_KEY = Path(".comet_api").read_text().strip()
 
 comet_ml.login()
@@ -40,7 +41,12 @@ from baselines import (
     loss_if_predict_mostrecent,
     theory_linear_expected_error,  # TODO@DR: put this back
 )
-from data_util import report_dataset_loss, data_train_test_split_linear, DatasetWrapper
+from data_util import (
+    report_dataset_loss,
+    report_dataset_psnr,
+    data_train_test_split_linear,
+    DatasetWrapper,
+)
 from vis_utils import vis_weights_kq_pv, vis_loss, vis_weights_grad_kq_pv
 
 from models import *
@@ -332,12 +338,12 @@ def train(model, args):
 
         ep_loss = running_loss_epoch / running_batch_counter
 
-        for name, param in model.named_parameters():
-            # print(f"param is {param} and grad is {param.grad}")
-            if param.grad is not None:
-                print(
-                    f"In epoch {epoch} shape of {name} is {param.size()} and gradient is {param.grad.size()}"
-                )
+        # for name, param in model.named_parameters():
+        #     # print(f"param is {param} and grad is {param.grad}")
+        #     if param.grad is not None:
+        #         print(
+        #             f"In epoch {epoch} shape of {name} is {param.size()} and gradient is {param.grad.size()}"
+        #         )
 
         curve_y_losstrain_epochs_avg.append(ep_loss)  # DR: keep for paper-like vis
 
@@ -358,6 +364,7 @@ def train(model, args):
 
     report_dataset_loss(model, loss_func, train_loader, "train", device)
     report_dataset_loss(model, loss_func, test_loader, "test", device)
+    report_dataset_psnr(model, loss_func, test_loader, "test", device)
 
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
@@ -458,7 +465,7 @@ def main(args):
     )
 
     # Log groups from structured datagen
-    img = Image.open("see_groups.png")
+    img = Image.open("groups_built_in_datagen.png")
 
     exp.log_image(
         image_data=img,

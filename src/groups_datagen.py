@@ -216,7 +216,7 @@ class GroupSampler(DataSampler):
         # want to have dirty first in seq
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
 
-        # print(f"are dirty and clean diff? {X_dirty==X_clean}")
+        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes
 
         return fused_seq, label
 
@@ -251,7 +251,7 @@ for x in partition:
     S_matrix[x[1], x[0]] = 1 / 2
 plt.matshow(S_matrix, cmap="Greys")
 plt.axis("off")
-plt.savefig("see_groups.png")
+plt.savefig("groups_built_in_datagen.png")
 
 
 def grouped_data_train_test_split_util(

@@ -52,7 +52,7 @@ grouped_patches:
 
 
 training:
-    batch_size: 128
+    batch_size: 64
     learning_rate: 0.01
 
     period_save_weights: 4

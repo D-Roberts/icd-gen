@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 
 from dgen_linear import (
@@ -74,6 +75,38 @@ def report_dataset_loss(
     if print_val:
         print("\t%s data loss: %.3e (batches=%d)" % (data_label, mse_loss, count))
     return mse_loss
+
+
+def report_dataset_psnr(
+    net, criterion, dataloader, data_label, device, print_val=False, plot_some=False
+):
+    # TODO@DR - this is just poc - can live with the non-torch for now
+    psnr_total = 0
+    count = 0.0
+    with torch.no_grad():
+        for i, data in enumerate(dataloader, 0):
+            samples, targets = data
+            outputs_full, _ = net(samples.to(device))
+            outputs = outputs_full[:, :, -1]
+            # print(f"outputs shape **************{outputs.shape}")
+            # print(f"targets shape **************{targets.shape}")
+
+            # Very inneficient calc non-vectorized but this is small stuff
+
+            for i in range(outputs.shape[0]):
+                one_psnr = peak_signal_noise_ratio(
+                    outputs[i].detach().cpu().numpy(), targets[i].detach().cpu().numpy()
+                )
+                # print(f"one_psnr*****************{one_psnr}")
+                count += 1
+                psnr_total += one_psnr
+
+    psnr_avg = psnr_total / count
+
+    print(
+        "\t%s avg psnr for test set: %.3e (batches=%d)" % (data_label, psnr_avg, count)
+    )
+    return psnr_avg
 
 
 def data_train_test_split_util(
