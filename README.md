@@ -33,7 +33,7 @@ conda activate icd-gen
 
 * Run train
 ```
-python src/train_denoiser.py --config src/config/linear_manifold.yaml
+python src/train_denoiser.py --config config/args.yaml
 ```
 Clean up dirs with 
 ```

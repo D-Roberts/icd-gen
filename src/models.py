@@ -193,6 +193,8 @@ class TransformerModelV2(nn.Module):
         self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
         self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
         self.rho = 1.0
+        # self.project_in = nn.Linear(dim_input, dim_input // 2, bias=False)
+        self.project_out = nn.Linear(dim_input, dim_input // 2, bias=False)
 
     def forward(self, xs):
         """
@@ -201,6 +203,7 @@ class TransformerModelV2(nn.Module):
 
         return: DR: last layer full output and the argument to the softmax
         """
+        xs = torch.permute(xs, (0, 2, 1))
         batchsz, n_dim, n_tokens = xs.size()
 
         W_KQ = self.W_KQ
@@ -218,7 +221,9 @@ class TransformerModelV2(nn.Module):
         # ]  # take dim_n output result at last token, for all batches
 
         # @DR: return all to be able to plot and inspect ranks
-        return f_attn, attn_arg
+        print(f"out from model ***********{f_attn.shape}")
+        f_attn_reperm = torch.permute(f_attn, (0, 2, 1))
+        return self.project_out(f_attn_reperm), attn_arg
 
 
 class DynamicTanh(nn.Module):

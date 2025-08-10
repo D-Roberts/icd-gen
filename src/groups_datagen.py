@@ -148,7 +148,7 @@ class GroupSampler(DataSampler):
             for j in range(self.D):
                 if j in R:  # this here creates artif groups by snr
                     X[i][j] = y[i] * w + noise[i][j]
-                else:
+                else:  # TODO@DR: rethink this SNR
                     prob = 2 * (torch.rand(1) - 0.5)
                     if prob > 0 and prob < q / 2:
                         delta = 1
@@ -193,6 +193,11 @@ class GroupSampler(DataSampler):
 
     def get_fused_sequence(self, X_clean=None, X_dirty=None):
         # just assume if X_clean given we also have X_dirty
+
+        # TODO@dr I am calling it dirty bc I wonder about other distortions
+        # beside noise; for instance those eigendistortions. Can
+        # I do anything with that?
+
         if X_clean is None:
             X_clean, X_dirty = self.add_gamma_noise()
 
@@ -200,9 +205,11 @@ class GroupSampler(DataSampler):
         # its clean version the label, simply set the last clean
         # patch in the fused to 0
 
-        label = X_clean[:, :, -1]
+        label = X_clean[:, -1]
 
-        X_clean[:, :, -1] = 0.0
+        X_clean[
+            :, -1
+        ] = 0.0  # 0 out last patch where the query is on the clean supervision
 
         # want to have dirty first in seq
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
@@ -213,17 +220,21 @@ class GroupSampler(DataSampler):
 # Ad hoc testing
 dggen = GroupSampler()
 dataset, y, w, partition = dggen.sample_xs()
-print(dataset.shape)
+
+# dataset[:,-1] = 0.0
+# print("last patch?", dataset[0,-1].shape) # yeap
+# print("first sample with last patch zeroed", dataset[0]) #yeap
+
 # print(y.shape) # 1000; 1 y per example which are tied into signal to noise
 
 # TODO@DR Should I tie the gamma noise params to y or to S partition indeces of groups?
 
 _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
-print(f"the noisy set {noisy_d.shape}")
+print(f"the noisy set {noisy_d.shape}")  # (num_samples, num_patches, flattened patch)
 
 fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
-print(f"label shape {label.shape}")
-print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][0]}")
+# print(f"label shape {label.shape}") # looks ok now
+# print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][-1]}") #yeap
 # print(f"fused seq shape {fused_seq.shape}")
 # print(f"feature w shape {w.shape}") #100 dim vector from d
 # print(f"partition of indices S {partition}") # there are 10 groups with 2 elem each
@@ -243,19 +254,12 @@ plt.savefig("see_groups.png")
 def grouped_data_train_test_split_util(
     x_total,
     y_total,
-    data_subspace_dict,
-    context_len,
-    dim_n,
-    num_W_in_dataset,
-    context_examples_per_W,
     test_ratio,
     as_torch=True,
-    savez_fname=None,
-    verbose=True,
     rng=None,
 ):
-    x_total = np.array(x_total).astype(np.float32)
-    y_total = np.array(y_total).astype(np.float32)
+    x_total1 = x_total.numpy()  # these come in as tensors
+    y_total1 = y_total.numpy()
 
     rng = (
         rng or np.random.default_rng()
@@ -263,80 +267,70 @@ def grouped_data_train_test_split_util(
 
     # now perform train test split and randomize
     ntotal = len(y_total)
-    if test_ratio is None:
-        x_test = None
-        y_test = None
-        test_data_subspaces = None
 
-        ntrain = ntotal
-        train_indices_to_shuffle = [i for i in range(ntotal)]
-        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
+    ntest = int(test_ratio * ntotal)
+    ntrain = ntotal - ntest
 
-        # grab train data
-        x_train = x_total[train_indices, :, :]
-        y_train = y_total[train_indices, :]
-        # rebuild metadata dicts after shuffling
-        train_data_subspaces = dict()
-        for idx, val in enumerate(train_indices):
-            train_data_subspaces[idx] = data_subspace_dict[val].copy()
+    test_indices = rng.choice(ntotal, ntest, replace=False)
+    train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
+    train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
 
-    else:
-        ntest = int(test_ratio * ntotal)
-        ntrain = ntotal - ntest
+    # grab train data
+    x_train = x_total1[train_indices, :, :]
+    y_train = y_total1[train_indices, :]
+    # grab test data
+    x_test = x_total1[test_indices, :, :]
+    y_test = y_total1[test_indices, :]
 
-        test_indices = rng.choice(ntotal, ntest, replace=False)
-        train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
-        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
+    return (
+        torch.from_numpy(x_train),
+        torch.from_numpy(y_train),
+        torch.from_numpy(x_test),
+        torch.from_numpy(y_test),
+    )
 
-        # grab train data
-        x_train = x_total[train_indices, :, :]
-        y_train = y_total[train_indices, :]
-        # grab test data
-        x_test = x_total[test_indices, :, :]
-        y_test = y_total[test_indices, :]
 
-        # rebuild metadata dicts after shuffling
-        train_data_subspaces = dict()
-        test_data_subspaces = dict()
-        for idx, val in enumerate(train_indices):
-            train_data_subspaces[idx] = data_subspace_dict[val].copy()
-        for idx, val in enumerate(test_indices):
-            test_data_subspaces[idx] = data_subspace_dict[val].copy()
+# Get train and test TODO@DR reason why do it this way vs generate a separate dataset
 
-    return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
 
+x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
+    fused_seq, label, 0.2, as_torch=True, rng=None
+)
+
+print(x_train.shape)
+print(y_train.shape)
 
 # Look at nlmeans and psnr on this generated
-# estimate the noise standard deviation from the noisy image
-clean = dataset[0, 0].view(10, 10).unsqueeze(-1).numpy()
-noisy = noisy_d[0, 0].view(10, 10).unsqueeze(-1).numpy()
-print(noisy.shape)
-
+# # estimate the noise standard deviation from the noisy image
+# clean = dataset[0,0].view(10,10).unsqueeze(-1).numpy()
+# noisy = noisy_d[0,0].view(10,10).unsqueeze(-1).numpy()
 # print(noisy.shape)
-sigma_est = np.mean(estimate_sigma(noisy, channel_axis=-1))
-print(f"estimated noise standard deviation = {sigma_est}")
 
-patch_kw = dict(
-    patch_size=5,  # 5x5 patches
-    patch_distance=6,  # 13x13 search area
-    channel_axis=-1,
-)
+# # print(noisy.shape)
+# sigma_est = np.mean(estimate_sigma(noisy, channel_axis=-1))
+# print(f'estimated noise standard deviation = {sigma_est}')
 
-denoise2_fast = denoise_nl_means(
-    noisy, h=0.6 * sigma_est, sigma=sigma_est, fast_mode=True, **patch_kw
-)
+# patch_kw = dict(
+#     patch_size=5,  # 5x5 patches
+#     patch_distance=6,  # 13x13 search area
+#     channel_axis=-1,
+# )
 
-print("den fast shape", denoise2_fast.reshape((10, 10, 1)).shape)
-denoise2_fast = denoise2_fast.reshape((10, 10, 1))
+# denoise2_fast = denoise_nl_means(
+#     noisy, h=0.6 * sigma_est, sigma=sigma_est, fast_mode=True, **patch_kw
+# )
 
-fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(8, 6), sharex=True, sharey=True)
+# print("den fast shape", denoise2_fast.reshape((10, 10, 1)).shape)
+# denoise2_fast = denoise2_fast.reshape((10, 10, 1))
 
-ax[0].imshow(noisy)
-ax[0].axis("off")
-ax[0].set_title("noisy")
-ax[1].imshow(clean)
-ax[1].axis("off")
-ax[1].set_title("clean")
+# fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(8, 6), sharex=True, sharey=True)
+
+# ax[0].imshow(noisy)
+# ax[0].axis('off')
+# ax[0].set_title('noisy')
+# ax[1].imshow(clean)
+# ax[1].axis('off')
+# ax[1].set_title('clean')
 # ax[0, 2].imshow(denoise2)
 # ax[0, 2].axis('off')
 # ax[0, 2].set_title('non-local means\n(slow, using $\\sigma_{est}$)')
@@ -346,11 +340,11 @@ ax[1].set_title("clean")
 # ax[1, 1].imshow(denoise_fast)
 # ax[1, 1].axis('off')
 # ax[1, 1].set_title('non-local means\n(fast)')
-ax[2].imshow(denoise2_fast)
-ax[2].axis("off")
-ax[2].set_title("non-local means\n(fast, using $\\sigma_{est}$)")
+# ax[2].imshow(denoise2_fast)
+# ax[2].axis('off')
+# ax[2].set_title('non-local means\n(fast, using $\\sigma_{est}$)')
 
-fig.tight_layout()
+# fig.tight_layout()
 # plt.show()
 
 # print PSNR metric for each case; higher is better (closer img) but using MSE

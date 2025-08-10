@@ -65,8 +65,8 @@ training:
         choice: cosine # cosine or None; works best
         warmup: 1 # num warmup steps for cosine scheduler
     nn_model: TransformerModelV1noresOmitLast #string for a sequence model class (e.g. 'TransformerModelV1')
-    context_len: 500 #(default: 500) int, context length of input token sequence (X.shape[-1])
-    dim_n: 32 #(default: 32) int, ambient dimension
+    context_len: 10 #(default: 500) int, context length of input token sequence (X.shape[-1])
+    dim_n: 200 #(default: 32) int, ambient dimension
     seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
     train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
     num_W_in_dataset: 1000

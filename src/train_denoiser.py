@@ -18,6 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
 from energies import *
+from groups_datagen import x_train, y_train, x_test, y_test
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -197,8 +198,6 @@ def train(model, args):
             args.DATAGEN_GLOBALS["linear"]["style_subspace_dimensions"],
         )
 
-    # elif datagen_choice == "manifold": #TODO: later
-
     # shorthand aliases used below
     sigma2_corruption = args.DATAGEN_GLOBALS["linear"]["sigma2_corruption"]  # float
     style_corruption_orthog = args.DATAGEN_GLOBALS["linear"][
@@ -300,17 +299,17 @@ def train(model, args):
         model.load_state_dict(state["model_state_dict"])
         optimizer.load_state_dict(state["optimizer_state_dict"])
 
-    (
-        x_train,
-        y_train,
-        x_test,
-        y_test,
-        train_data_subspaces,
-        test_data_subspaces,
-    ) = data_train_test_split_linear(
-        **base_kwargs,
-        sigma2_pure_context=args.DATAGEN_GLOBALS[datagen_choice]["sigma2_pure_context"],
-    )
+    # (
+    #     x_train,
+    #     y_train,
+    #     x_test,
+    #     y_test,
+    #     train_data_subspaces,
+    #     test_data_subspaces,
+    # ) = data_train_test_split_linear(
+    #     **base_kwargs,
+    #     sigma2_pure_context=args.DATAGEN_GLOBALS[datagen_choice]["sigma2_pure_context"],
+    # )
 
     # print(
     #     "in train denoiser, shape and device of x_train", x_train.shape, x_train.device
@@ -319,55 +318,37 @@ def train(model, args):
     ################################################################################
     # Build or load data
     ################################################################################
-    restart_dataset = None
 
-    if args.training["restart_dataset"] is not None:
-        (
-            x_train,
-            y_train,
-            x_test,
-            y_test,
-            train_data_subspaces,
-            test_data_subspaces,
-        ) = restart_dataset
-        # print("x_train.shape", x_train.shape)
+    # keep for the linear manifold ablations
+    # (
+    #     x_train,
+    #     y_train,
+    #     x_test,
+    #     y_test,
+    #     train_data_subspaces,
+    #     test_data_subspaces,
+    # ) = data_train_test_split_fncall(**base_kwargs)
 
-        # specify training and testing datasets
-        train_size = x_train.shape[0]
-        assert train_size == int(
-            args.training["train_plus_test_size"] * (1 - test_ratio)
-        )  # sanity check
+    # print("x_train.shape", x_train.shape)
 
-        # fname suffix for io
-        data_suffix = "RESTART-SAME-DATASET"  # appended to fname
-    else:
-        (
-            x_train,
-            y_train,
-            x_test,
-            y_test,
-            train_data_subspaces,
-            test_data_subspaces,
-        ) = data_train_test_split_fncall(**base_kwargs)
+    # specify training and testing datasets
+    train_size = x_train.shape[0]
+    print("train_size", train_size)
+    print(
+        "int(train_plus_test_size * (1 - test_ratio))",
+        int(args.training["train_plus_test_size"] * (1 - test_ratio)),
+    )
+    assert train_size == int(
+        args.training["train_plus_test_size"] * (1 - test_ratio)
+    )  # sanity check
 
-        # print("x_train.shape", x_train.shape)
+    data_suffix += "_tx%d_xpw%d_spx%d" % (
+        train_size,
+        context_examples_per_W,
+        samples_per_context_example,
+    )
 
-        # specify training and testing datasets
-        train_size = x_train.shape[0]
-        print("train_size", train_size)
-        print(
-            "int(train_plus_test_size * (1 - test_ratio))",
-            int(args.training["train_plus_test_size"] * (1 - test_ratio)),
-        )
-        assert train_size == int(
-            args.training["train_plus_test_size"] * (1 - test_ratio)
-        )  # sanity check
-
-        data_suffix += "_tx%d_xpw%d_spx%d" % (
-            train_size,
-            context_examples_per_W,
-            samples_per_context_example,
-        )
+    print(f"What is wrapped for training********{x_train.shape}")
 
     train_dataset = DatasetWrapper(x_train, y_train)
     test_dataset = DatasetWrapper(x_test, y_test)
@@ -669,6 +650,8 @@ def main(args):
         test_data_subspaces,
     ) = train(model, args)
 
+    print(f"what did train on {x_train.shape}")
+
     if args.model["type"] not in {"gpt2"}:
         learned_W_KQ = net.W_KQ.detach().cpu().numpy()
         learned_W_PV = net.W_PV.detach().cpu().numpy()
@@ -748,6 +731,16 @@ def main(args):
         #     image_format="png",
         #     step=0,
         # )
+
+        # Log groups from structured datagen
+        img = Image.open("see_groups.png")
+
+        exp.log_image(
+            image_data=img,
+            name=f"groups.png",
+            image_format="png",
+            step=0,
+        )
 
 
 if __name__ == "__main__":
