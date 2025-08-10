@@ -210,8 +210,16 @@ def train(model, args):
     print("\nNum of params matrices to train:", len(params))
     print("\tparams[0].size():", params[0].size())
 
+    # Freeze the projection layers
+    model.embedpatch.projection.weight.requires_grad = False
+    model.unembed.weight.requires_grad = False
+
     # TODO@DR: make options for losses here
-    loss_func = nn.MSELoss()
+
+    if args.training["loss"] == "MSE":
+        loss_func = nn.MSELoss()
+    elif args.training["loss"] == "MAE":
+        loss_func = nn.L1Loss()
 
     ################################################################################
     # prep loss curves (x, y arrays)
@@ -324,10 +332,12 @@ def train(model, args):
 
         ep_loss = running_loss_epoch / running_batch_counter
 
-        # for name, param in model.named_parameters():
-        #     # print(f"param is {param} and grad is {param.grad}")
-        #     if param.grad is not None:
-        #         print(f"In epoch {epoch} shape of {name} is {param.size()} and gradient is {param.grad.size()}")
+        for name, param in model.named_parameters():
+            # print(f"param is {param} and grad is {param.grad}")
+            if param.grad is not None:
+                print(
+                    f"In epoch {epoch} shape of {name} is {param.size()} and gradient is {param.grad.size()}"
+                )
 
         curve_y_losstrain_epochs_avg.append(ep_loss)  # DR: keep for paper-like vis
 

@@ -52,13 +52,13 @@ grouped_patches:
 
 
 training:
-    batch_size: 256
+    batch_size: 128
     learning_rate: 0.01
 
     period_save_weights: 4
     train_steps:
 
-    loss: MSE # arg not used TODO@DR; MAE, SURE and Jens_Shan should be options
+    loss: MAE #MSE TODO@DR; MAE, SURE and Jens_Shan should be options
 
     epochs: 5
     optimizer_choice: adamw 
@@ -70,7 +70,7 @@ training:
     
     
     seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
-    train_plus_test_size: 5000 # settings for dataset construction + training (from their settings file)
+    train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
     full_loss_sample_interval: 4
     flag_save_dataset: False
     flag_vis_loss: False
