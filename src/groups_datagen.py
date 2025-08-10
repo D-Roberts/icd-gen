@@ -199,17 +199,22 @@ class GroupSampler(DataSampler):
         # I do anything with that?
 
         if X_clean is None:
-            X_clean, X_dirty = self.add_gamma_noise()
+            X_clean, X_dirty, y = self.add_gamma_noise()
 
         # because the last gnoised patch should be the query and
         # its clean version the label, simply set the last clean
         # patch in the fused to 0
 
-        label = X_clean[:, -1]
+        patch_dim = X_clean.shape[-1]
+        label = torch.zeros((X_clean.shape[0], X_clean.shape[-1] * 2))
+        label[:, :patch_dim] += X_clean[:, -1]
 
         X_clean[
             :, -1
         ] = 0.0  # 0 out last patch where the query is on the clean supervision
+
+        # also match the 0 in the label for same dim; now X_clean last is 0
+        # label = torch.cat((label, X_clean[:,-1]), dim=-1)
 
         # want to have dirty first in seq
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
@@ -231,10 +236,9 @@ dataset, y, w, partition = dggen.sample_xs()
 
 _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
 print(f"the noisy set {noisy_d.shape}")  # (num_samples, num_patches, flattened patch)
-
 fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
-# print(f"label shape {label.shape}") # looks ok now
-# print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][-1]}") #yeap
+# print(f"label shape {label.shape} and val {label[0]}") # looks ok now
+# print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][-1].shape} and not equal to label {fused_seq[0][-1]} at the same pos") #yeap
 # print(f"fused seq shape {fused_seq.shape}")
 # print(f"feature w shape {w.shape}") #100 dim vector from d
 # print(f"partition of indices S {partition}") # there are 10 groups with 2 elem each
@@ -258,6 +262,10 @@ def grouped_data_train_test_split_util(
     as_torch=True,
     rng=None,
 ):
+    # Note that the datagen returns shape (batch, seq len, fused patch dim)
+    # the models so far expected a permuted version
+    x_total = torch.permute(x_total, (0, 2, 1))
+
     x_total1 = x_total.numpy()  # these come in as tensors
     y_total1 = y_total.numpy()
 
@@ -300,7 +308,11 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 print(x_train.shape)
 print(y_train.shape)
 
-# Look at nlmeans and psnr on this generated
+
+# **********************************************************
+# AdHoc test ***********************************************
+# Look at nlmeans and psnr on this generated dataset
+
 # # estimate the noise standard deviation from the noisy image
 # clean = dataset[0,0].view(10,10).unsqueeze(-1).numpy()
 # noisy = noisy_d[0,0].view(10,10).unsqueeze(-1).numpy()

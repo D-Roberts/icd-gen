@@ -60,29 +60,23 @@ class TransformerModelV2(nn.Module):
                     to be able to analyze representations later.
         """
         print(xs.shape)
-        xs = torch.permute(xs, (0, 2, 1))
         batchsz, n_dim, n_tokens = xs.size()
 
         W_KQ = self.W_KQ
         W_PV = self.W_PV
 
         xs_skip_last = xs[:, :, :-1]
+        # because last is the query
+        print(f"xs_skip_last {xs_skip_last.shape}")
 
         # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
         attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ xs / self.rho
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
         f_attn = W_PV @ xs_skip_last @ softmax_attn_arg
 
-        # out = f_attn[
-        #     :, :, -1
-        # ]  # take dim_n output result at last token, for all batches
-
-        # @DR: return all to be able to plot and inspect ranks and other
-        # properties of representations
-
-        print(f"out from model ***********{f_attn.shape}")
-        f_attn_reperm = torch.permute(f_attn, (0, 2, 1))
-        return self.project_out(f_attn_reperm), attn_arg
+        # A linear projection due to the fact that the fused seq
+        # has double dim (2X patch dim)
+        return self.project_out(f_attn), attn_arg
 
 
 MODEL_CLASS_FROM_STR = {
