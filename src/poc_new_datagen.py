@@ -153,7 +153,7 @@ print(noisy_seq.shape)
 # concatenate clean and noisy patches into sequence of concatenated
 # shape (batchsize, num_patches, patch_dim, 2*patch_dim)
 instance = torch.cat((noisy_seq, patches), dim=-1)
-print(instance.shape)
+print("instance with fused patches", instance.shape)
 
 
 # An example patch embedding - will change later

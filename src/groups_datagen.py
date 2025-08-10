@@ -1,17 +1,35 @@
 """
-Patch generation module for new datagen strategies.
+Data generation module for inputs with groups. Noising with gamma for 
+the in-context sequence.
 
 @DR: note that there is a torch.distributions.exp_family.ExponentialFamily 
 abstract class to possibly work with in a more flexible/general datagen way
 beyond normal.
 
+# note that gamma noise is always positive; it is multiplicative noise
+# gamma distribution is in the exponential family
+# To add gamma noise to an image, you would typically multiply the image by the sampled noise
+# X= VY where V is gamma noise
+
+# THe prompt and query will be (y1,x1,y2,x2,y3,x3,y4) and predict x4- clean
+# to construct train and test dataset, label will be x4.
+# where y are the noised; we aim to learn distribution through noise-clean
+# associations as well as input group structure; for this - must have positions
+# encoded.
 """
-import numpy as np
+
 import torch
-from torch.distributions import MultivariateNormal
 from torch.distributions import Gamma
 import torch.nn as nn
 import math
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+from skimage import data, img_as_float
+from skimage.restoration import denoise_nl_means, estimate_sigma
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+from skimage.util import random_noise
 
 
 class DataSampler:
@@ -27,15 +45,19 @@ class GroupSampler(DataSampler):
     Each example does not have the same number of group members.
     Args:
         D - int - number of patches.
-        sigma = level of gaussian noise when generated patch data,
-        controls group structure
+        sigma = level of gaussian noise controlling signal to noise specific to
+        groups
+        y - is a 1 or -1 label from the original classif task in jelassi paper
+        keeping y around and tying gamma params to 1 or -1 [TODO@DR:
+        still thinking how to structure this to be in-context but also learnable
+        and not to mess up the group structures]
 
-        N - num of samples (a sample would correspond to a patched up image)
+        N - num of samples (a sample should correspond to a patched up image
+        but groups are constructed accross samples in the dataset generated)
 
-
-    Returns:
-        all dataset samples - torch.Tensor -
-        of shape (num_samples, im_dim*im_dim)
+        S = partitiion of indeces of patches in each group
+        L = how many groups
+        C = group cardinality
 
     """
 
@@ -81,9 +103,12 @@ class GroupSampler(DataSampler):
             self.S = S
 
         if gamma_dict is None:
-            self.gamma_dict = {}  # create set gamma params
-            self.gamma_dict["y1"] = {"ga": 2.26, "gb": 1.5}
-            self.gamma_dict["y2"] = {"ga": 3.62, "gb": 0.8}
+            self.gamma_dict = {}  # create set gamma params; by default equal
+            self.gamma_dict["y1"] = {
+                "ga": torch.tensor([9.0]),
+                "gb": torch.tensor([0.50]),
+            }
+            self.gamma_dict["y2"] = {"ga": torch.tensor([0.5]), "gb": torch.tensor([1])}
         else:
             self.gamma_dict = gamma_dict
 
@@ -121,7 +146,7 @@ class GroupSampler(DataSampler):
             l = torch.randint(self.L, (1,))[0]
             R = self.S[l]
             for j in range(self.D):
-                if j in R:
+                if j in R:  # this here creates artif groups by snr
                     X[i][j] = y[i] * w + noise[i][j]
                 else:
                     prob = 2 * (torch.rand(1) - 0.5)
@@ -135,9 +160,57 @@ class GroupSampler(DataSampler):
 
         # TODO@DR: I might need to rethink how the patches in one sample are
         # and how in context is defined
-        return X.reshape(self.N, self.D, self.D, self.D), y, w, self.S
+
+        # last dim can be viewed as a patch linearized
+        return X, y, w, self.S
+
+    def add_gamma_noise(self, X_clean=None, y=None):
+        if X_clean is None:  # should come in pair with y
+            X_clean, y, w, _ = self.sample_xs()
+        X_gnoisy = torch.zeros_like(X_clean)
+
+        # Create two Gamma distribution objects with params tied to
+        # y=1 or -1
+        gamma_dist1 = Gamma(
+            concentration=self.gamma_dict["y1"]["ga"], rate=self.gamma_dict["y1"]["gb"]
+        )
+        gamma_dist2 = Gamma(
+            concentration=self.gamma_dict["y2"]["ga"], rate=self.gamma_dict["y2"]["gb"]
+        )
+
+        # TODO@DR I'll have to reason how the seeds for generators go here
+        for i in range(X_clean.shape[0]):
+            if y[i] == 1:
+                gnoise = gamma_dist1.sample((1,))
+            else:  # -1
+                gnoise = gamma_dist2.sample((1,))
+
+            # gamma is multiplicative
+            noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
+            X_gnoisy[i, :, :] += noisy_patches
+
+        return X_clean, X_gnoisy, y
+
+    def get_fused_sequence(self, X_clean=None, X_dirty=None):
+        # just assume if X_clean given we also have X_dirty
+        if X_clean is None:
+            X_clean, X_dirty = self.add_gamma_noise()
+
+        # because the last gnoised patch should be the query and
+        # its clean version the label, simply set the last clean
+        # patch in the fused to 0
+
+        label = X_clean[:, :, -1]
+
+        X_clean[:, :, -1] = 0.0
+
+        # want to have dirty first in seq
+        fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
+
+        return fused_seq, label
 
 
+# Ad hoc testing
 dggen = GroupSampler()
 dataset, y, w, partition = dggen.sample_xs()
 print(dataset.shape)
@@ -145,7 +218,168 @@ print(dataset.shape)
 
 # TODO@DR Should I tie the gamma noise params to y or to S partition indeces of groups?
 
-# using X[i][j] = y[i] * w + noise[i][j]
-# print(y)
+_, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
+print(f"the noisy set {noisy_d.shape}")
 
-print(dataset[0][0])
+fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
+print(f"label shape {label.shape}")
+print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][0]}")
+# print(f"fused seq shape {fused_seq.shape}")
+# print(f"feature w shape {w.shape}") #100 dim vector from d
+# print(f"partition of indices S {partition}") # there are 10 groups with 2 elem each
+
+D = 10
+plt.figure(figsize=(4, 4))
+S_matrix = torch.eye(D, D)
+for x in partition:
+    # print(f"wjat is x in S {x[1]}")
+    S_matrix[x[0], x[1]] = 1 / 2
+    S_matrix[x[1], x[0]] = 1 / 2
+plt.matshow(S_matrix, cmap="Greys")
+plt.axis("off")
+plt.savefig("see_groups.png")
+
+
+def grouped_data_train_test_split_util(
+    x_total,
+    y_total,
+    data_subspace_dict,
+    context_len,
+    dim_n,
+    num_W_in_dataset,
+    context_examples_per_W,
+    test_ratio,
+    as_torch=True,
+    savez_fname=None,
+    verbose=True,
+    rng=None,
+):
+    x_total = np.array(x_total).astype(np.float32)
+    y_total = np.array(y_total).astype(np.float32)
+
+    rng = (
+        rng or np.random.default_rng()
+    )  # determines how dataset is split; if no rng passed, create one
+
+    # now perform train test split and randomize
+    ntotal = len(y_total)
+    if test_ratio is None:
+        x_test = None
+        y_test = None
+        test_data_subspaces = None
+
+        ntrain = ntotal
+        train_indices_to_shuffle = [i for i in range(ntotal)]
+        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
+
+        # grab train data
+        x_train = x_total[train_indices, :, :]
+        y_train = y_total[train_indices, :]
+        # rebuild metadata dicts after shuffling
+        train_data_subspaces = dict()
+        for idx, val in enumerate(train_indices):
+            train_data_subspaces[idx] = data_subspace_dict[val].copy()
+
+    else:
+        ntest = int(test_ratio * ntotal)
+        ntrain = ntotal - ntest
+
+        test_indices = rng.choice(ntotal, ntest, replace=False)
+        train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
+        train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
+
+        # grab train data
+        x_train = x_total[train_indices, :, :]
+        y_train = y_total[train_indices, :]
+        # grab test data
+        x_test = x_total[test_indices, :, :]
+        y_test = y_total[test_indices, :]
+
+        # rebuild metadata dicts after shuffling
+        train_data_subspaces = dict()
+        test_data_subspaces = dict()
+        for idx, val in enumerate(train_indices):
+            train_data_subspaces[idx] = data_subspace_dict[val].copy()
+        for idx, val in enumerate(test_indices):
+            test_data_subspaces[idx] = data_subspace_dict[val].copy()
+
+    return x_train, y_train, x_test, y_test, train_data_subspaces, test_data_subspaces
+
+
+# Look at nlmeans and psnr on this generated
+# estimate the noise standard deviation from the noisy image
+clean = dataset[0, 0].view(10, 10).unsqueeze(-1).numpy()
+noisy = noisy_d[0, 0].view(10, 10).unsqueeze(-1).numpy()
+print(noisy.shape)
+
+# print(noisy.shape)
+sigma_est = np.mean(estimate_sigma(noisy, channel_axis=-1))
+print(f"estimated noise standard deviation = {sigma_est}")
+
+patch_kw = dict(
+    patch_size=5,  # 5x5 patches
+    patch_distance=6,  # 13x13 search area
+    channel_axis=-1,
+)
+
+denoise2_fast = denoise_nl_means(
+    noisy, h=0.6 * sigma_est, sigma=sigma_est, fast_mode=True, **patch_kw
+)
+
+print("den fast shape", denoise2_fast.reshape((10, 10, 1)).shape)
+denoise2_fast = denoise2_fast.reshape((10, 10, 1))
+
+fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(8, 6), sharex=True, sharey=True)
+
+ax[0].imshow(noisy)
+ax[0].axis("off")
+ax[0].set_title("noisy")
+ax[1].imshow(clean)
+ax[1].axis("off")
+ax[1].set_title("clean")
+# ax[0, 2].imshow(denoise2)
+# ax[0, 2].axis('off')
+# ax[0, 2].set_title('non-local means\n(slow, using $\\sigma_{est}$)')
+# ax[1, 0].imshow(astro)
+# ax[1, 0].axis('off')
+# ax[1, 0].set_title('original\n(noise free)')
+# ax[1, 1].imshow(denoise_fast)
+# ax[1, 1].axis('off')
+# ax[1, 1].set_title('non-local means\n(fast)')
+ax[2].imshow(denoise2_fast)
+ax[2].axis("off")
+ax[2].set_title("non-local means\n(fast, using $\\sigma_{est}$)")
+
+fig.tight_layout()
+# plt.show()
+
+# print PSNR metric for each case; higher is better (closer img) but using MSE
+# minv = min(np.min(noisy), np.min(clean))
+# maxv = max(np.max(noisy), np.max(clean))
+
+# psnr_noisy = peak_signal_noise_ratio(clean, noisy)
+# ssim_noisy = structural_similarity(im1=clean, im2=noisy,
+#                                    gaussian_weights=True,
+#                                    data_range=maxv-minv, sigma=1.5, win_size=1,
+#                                    use_sample_covariance=False)
+
+# psnr2_fast = peak_signal_noise_ratio(clean, denoise2_fast) # inf for same image
+
+# minv = min(np.min(denoise2_fast), np.min(clean))
+# maxv = max(np.max(denoise2_fast), np.max(clean))
+
+# ssim_nlmeans = structural_similarity(im1=clean, im2=denoise2_fast,
+#                                    gaussian_weights=True,
+#                                    data_range=maxv-minv, sigma=1.5,
+#                                    win_size=1,
+#                                    use_sample_covariance=False)
+
+
+# print(f'PSNR (noisy) = {psnr_noisy:0.2f}')
+# print(f'PSNR (fast, using sigma est) = {psnr2_fast:0.2f}')
+
+# print(f'SSIM (noisy) = {ssim_noisy:0.2f}')
+# print(f'SSIM (fast, using sigma est) = {ssim_nlmeans:0.2f}') #1 for same image
+# higher so nlmeans does do some denoising on the gamma
+
+# SSIM is a better metric for this structure and gamma case

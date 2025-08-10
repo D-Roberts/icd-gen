@@ -4,6 +4,7 @@
 import torch
 import torch.nn.functional as F
 from vit_spatial_poc import net
+import torch.nn as nn
 
 
 def JSD(p, q, reduction: str = "batchmean") -> torch.Tensor:
@@ -89,7 +90,7 @@ class SURELoss(nn.Module):
     def forward(self, preds, label, jacob_trace):
         term1 = torch.norm(label - preds) ** 2
 
-        term3 = -self.noise_var * d
+        term3 = -self.noise_var * self.d
 
         term2 = 2 * self.noise_var * jacob_trace
 
@@ -102,16 +103,16 @@ x = torch.randn(1, 4, 16)  # from the spatial
 preds = net(x)  # this model isn't ready yet - still predicts a classif
 print(preds.shape)
 label = torch.randn(1)
-
 jacob = jacrev(net, argnums=0)(x)  # recall that right now the net is still set up
 # . for the classification problem
-print("jacob is ", jacob[0][0][0][:].view((4, 4)))  # this should be square
-jacob_trace = torch.trace(jacob[0][0][0][:].view((4, 4)))
+print("jacob is ", jacob[0][0][0][:].view((8, 8)))  # this should be square
+jacob_trace = torch.trace(jacob[0][0][0][:].view((8, 8)))
 
 # TODO@DR: double check that jacob calculates what is necessary if I use this
 
 # Also - really mse is not appropriate for gamma noise; neither is SURE
 
 sloss = sureloss(preds, label, jacob_trace)
+print(f"poc SURE loss is {sloss}")
 
 # TODO@DR - now with Gamma consider MAE, Jensen-SH, or GMMAD (median based) losses
