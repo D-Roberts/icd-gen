@@ -217,8 +217,8 @@ def train(model, args):
     print("\tparams[0].size():", params[0].size())
 
     # Freeze the projection layers
-    model.embedpatch.projection.weight.requires_grad = False
-    model.unembed.weight.requires_grad = False
+    # model.embedpatch.projection.weight.requires_grad = False
+    # model.unembed.weight.requires_grad = False
 
     # TODO@DR: make options for losses here
 

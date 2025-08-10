@@ -58,7 +58,7 @@ training:
     period_save_weights: 4
     train_steps:
 
-    loss: MAE #MSE TODO@DR; MAE, SURE and Jens_Shan should be options
+    loss: MAE # MSE or MAE right now TODO@DR; SURE and Jens_Shan should be options
 
     epochs: 5
     optimizer_choice: adamw 

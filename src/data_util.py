@@ -195,7 +195,7 @@ def report_dataset_psnr(
         % (data_label, nlmeans_psnr_avg, count)
     )
     print(
-        "\t%s avg learned model ssim for test set: %f (instances=%d)"
+        "\t%s avg lmeans model ssim for test set: %f (instances=%d)"
         % (data_label, nlmeans_ssim_avg, count)
     )
     return psnr_avg, ssim_avg, nlmeans_psnr_avg, nlmeans_ssim_avg

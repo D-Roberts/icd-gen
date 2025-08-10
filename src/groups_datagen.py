@@ -63,7 +63,7 @@ class GroupSampler(DataSampler):
 
     def __init__(
         self,
-        N=1000,
+        N=5000,
         D=10,
         d=None,
         L=None,

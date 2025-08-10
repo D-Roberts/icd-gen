@@ -94,7 +94,7 @@ def vis_weights_kq_pv(
     cb0 = fig1.colorbar(im0, cax=ax0_cbar)
     cb1 = plt.colorbar(im1, cax=ax1_cbar, shrink=0.5)
 
-    title = "Weights: %s" % titlemod
+    title = "%s" % titlemod
     if fname is not None:
         title += "\n%s" % fname
     plt.suptitle(title, fontsize=10)

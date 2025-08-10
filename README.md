@@ -9,6 +9,9 @@
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways
         * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? 
+
+        * structure learned better by ssim when embed not frozen (10fold); still less than nlmeans 3 fold; psnr better than nlmeans (6fold)
+        * MAE works better than MSE as theory suggests
         
 
     *1. factor in the noise drift code from my other repo
