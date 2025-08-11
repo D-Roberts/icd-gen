@@ -6,7 +6,7 @@ from transformers import GPT2Model, GPT2Config
 from tqdm import tqdm
 
 import math
-
+from transformers import GPT2Model
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -87,13 +87,29 @@ class TransformerModelV2(nn.Module):
     """
     Simplified attention only 1 layer and softmax;
 
-    Misnomer - this is not a transformer.
+    If choose to use a frozen pretrained transformer kernel,
+    gpt2 embeddings for instance have size 768 so
+    d_model must be 768.
     """
 
     def __init__(
-        self, context_length, dim_input, d_model=32, dim_attn=None, n_layer=1, n_head=1
+        self,
+        context_length,
+        dim_input,
+        d_model=32,
+        add_frozen_kernel=False,
+        n_layer=1,
+        n_head=1,
     ):
         super().__init__()
+
+        self.add_frozen_kernel = add_frozen_kernel
+
+        if self.add_frozen_kernel:
+            d_model = 768
+            self._backbone = GPT2Model.from_pretrained("gpt2")
+            for param in self._backbone.base_model.parameters():
+                param.requires_grad = False
 
         # these
         self.W_KQ = weight_matrix(d_model, d_model, mode="default")
@@ -127,8 +143,12 @@ class TransformerModelV2(nn.Module):
         # print(f"pos embed shape********* {pos_embed.shape}")
 
         embedded = patch_embed + pos_embed
-
         # print(f"after embeddings shape ........{embedded.shape}") # they have (20, 10, 32)
+
+        # Choose to add a frozen pretrained backbone, as a kernel projector
+
+        if self.add_frozen_kernel:
+            embedded = self._backbone(inputs_embeds=embedded).last_hidden_state
 
         embedded = torch.permute(embedded, (0, 2, 1))
         # the rest of this expects shape unpermuted
@@ -149,7 +169,7 @@ class TransformerModelV2(nn.Module):
         # print(f"shape of f_attn {f_attn.shape}")  # (batch, d_model, seqlen)
         # ([20, 32, 10]) including the query
 
-        # but the target comes in 200dim
+        # the target comes in 200dim
         # so unembed here to 200 dim though I could probably keep only the 100dim
         out_full = self.unembed(torch.transpose(f_attn, 2, 1))
 

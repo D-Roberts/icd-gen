@@ -102,16 +102,31 @@ def report_dataset_psnr(
 
             for i in range(outputs.shape[0]):
                 # remove the zero padding, reshape to square patch and add channel dim
-                clean = targets[i].detach().cpu().numpy()[:100].reshape((10, 10))
-                denoised = outputs[i].detach().cpu().numpy()[:100].reshape((10, 10))
+                clean = (
+                    targets[i]
+                    .detach()
+                    .cpu()
+                    .numpy()[:100]
+                    .reshape((10, 10))[:, :, np.newaxis]
+                )
+                denoised = (
+                    outputs[i]
+                    .detach()
+                    .cpu()
+                    .numpy()[:100]
+                    .reshape((10, 10))[:, :, np.newaxis]
+                )
                 # clean = clean[:, np.newaxis]
                 # denoised = denoised[:, np.newaxis]
 
                 # Metrics calculations model prediction
-                one_psnr = peak_signal_noise_ratio(denoised, clean)
 
                 minv = min(np.min(denoised), np.min(clean))
                 maxv = max(np.max(denoised), np.max(clean))
+
+                one_psnr = peak_signal_noise_ratio(
+                    denoised, clean, data_range=maxv - minv
+                )
 
                 one_ssim = structural_similarity(
                     im1=clean,
@@ -124,11 +139,19 @@ def report_dataset_psnr(
                 )
 
                 # print(f"one_ssim*****************{one_ssim}")
+                noisy = (
+                    samples[i, :, -1]
+                    .detach()
+                    .cpu()
+                    .numpy()[:100]
+                    .reshape((10, 10))[:, :, np.newaxis]
+                )
+                # print(f"what is a noisy {noisy.shape}**************")
 
                 # and for nlmeans baseline; it requires a sigma calculation
-                sigma_est = np.mean(estimate_sigma(denoised, channel_axis=-1))
-                minv = min(np.min(denoised), np.min(clean))
-                maxv = max(np.max(denoised), np.max(clean))
+                sigma_est = np.mean(estimate_sigma(noisy, channel_axis=-1))
+                minv = min(np.min(noisy), np.min(clean))
+                maxv = max(np.max(noisy), np.max(clean))
 
                 # same for all but keeping kwargs close for clarity since this is
                 # pretty much toy code
@@ -139,20 +162,19 @@ def report_dataset_psnr(
                     preserve_range=False,
                 )
                 # noisy query is in samples last; in fused patch first come dirty then comes clean
-                noisy = samples[i, :, -1].detach().cpu().numpy()[:100].reshape((10, 10))
-                # print(f"what is a noisy {noisy.shape}**************")
 
                 # TODO@DR: some normalizations for img specific val ranges
 
                 denoise2_fast = denoise_nl_means(
-                    noisy[:, np.newaxis],
+                    noisy,
                     h=0.6 * sigma_est,
                     sigma=sigma_est,
                     fast_mode=True,
                     **patch_kw
-                )
-                # print(f"what is a nlmeans denosied {denoise2_fast}**************")
-                # print(f"what is a clean {clean}**************")
+                )[:, :, np.newaxis]
+
+                # print(f"what is a nlmeans denosied {denoise2_fast.shape}**************")
+                # print(f"what is a clean {clean.shape}**************")
 
                 # Metrics calculations nlmeans prediction
                 one_psnr_nlmeans = peak_signal_noise_ratio(

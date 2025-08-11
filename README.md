@@ -10,8 +10,14 @@
         since need to project it from embed dim anyways
         * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? 
 
-        * structure learned better by ssim when embed not frozen (10fold); still less than nlmeans 3 fold; psnr better than nlmeans (6fold)
         * MAE works better than MSE as theory suggests
+
+        * Not better with the large GPT2 frozen backbone on the small set.
+        * nlmeans per one-shot does better than a learned one-layer attention with pos embeds and input output projections
+
+        * When mimic an in-context where partitions generated per batch - model perf goes down.
+
+        * save the datasets after generating and load from disk- it gets slow.
         
 
     *1. factor in the noise drift code from my other repo

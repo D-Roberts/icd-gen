@@ -18,7 +18,15 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
 from energies import *
-from groups_datagen import x_train, y_train, x_test, y_test
+from groups_datagen import (
+    x_train,
+    y_train,
+    x_test,
+    y_test,
+    PreBatchedDataset,
+    train_batched_data,
+    test_batched_data,
+)
 
 
 API_KEY = Path(".comet_api").read_text().strip()
@@ -182,51 +190,63 @@ def train(model, args):
     # specify training and testing datasets
     # Right now only for structured POC
 
-    train_size = x_train.shape[0]
-    print("train_size", train_size)
-
     # just for save model
     # print(
     #     f"What dataset is wrapped for training********{x_train.shape} and label {y_train.shape}"
     # )
 
-    train_dataset = DatasetWrapper(x_train, y_train)
-    test_dataset = DatasetWrapper(x_test, y_test)
+    if not args.training["batch_level_partitions"]:
+        train_size = x_train.shape[0]
+        print("train_size", train_size)
+        train_dataset = DatasetWrapper(x_train, y_train)
+        test_dataset = DatasetWrapper(x_test, y_test)
 
-    if args.training["scheduler_kwargs"]["choice"] == "cosine":
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer, args.training["scheduler_kwargs"]["warmup"], epochs * train_size
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=args.training["nwork"],
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=args.training["nwork"],
+        )
+    else:
+        # if groups at batch level - they get imported from group_datagen
+        train_set = PreBatchedDataset(train_batched_data)  # already batched
+        test_set = PreBatchedDataset(test_batched_data)
+
+        train_size = len(train_batched_data)
+        train_loader = DataLoader(
+            train_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
         )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=args.training["nwork"],
-    )
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=args.training["nwork"],
-    )
-
-    # inspect network class
-    params = list(model.parameters())
-    print("\nNum of params matrices to train:", len(params))
-    print("\tparams[0].size():", params[0].size())
+        test_loader = DataLoader(
+            test_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
+        )
 
     # Freeze the projection layers
     # model.embedpatch.projection.weight.requires_grad = False
     # model.unembed.weight.requires_grad = False
 
-    # TODO@DR: make options for losses here
+    # see how many to train
+    c1 = 0
+    for param in model.parameters():
+        if param.requires_grad:
+            c1 += 1
+    print(f"how many params require grad {c1}")
 
     if args.training["loss"] == "MSE":
         loss_func = nn.MSELoss()
     elif args.training["loss"] == "MAE":
         loss_func = nn.L1Loss()
 
+    if args.training["scheduler_kwargs"]["choice"] == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer, args.training["scheduler_kwargs"]["warmup"], epochs * train_size
+        )
     ################################################################################
     # prep loss curves (x, y arrays)
     ################################################################################
@@ -252,7 +272,6 @@ def train(model, args):
     curve_y_losstest_interval = [
         test_full_mse_loss
     ]  # will append to this each full_loss_sample_interval batches
-    # curve_y_losstrain_interval = [train_full_mse_loss]  # will append to this each epoch
 
     ################################################################################
     # train loop

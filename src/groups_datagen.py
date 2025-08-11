@@ -230,11 +230,10 @@ dataset, y, w, partition = dggen.sample_xs()
 # print("first sample with last patch zeroed", dataset[0]) #yeap
 
 # print(y.shape) # 1000; 1 y per example which are tied into signal to noise
-
 # TODO@DR Should I tie the gamma noise params to y or to S partition indeces of groups?
 
 _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
-print(f"the noisy set {noisy_d.shape}")  # (num_samples, num_patches, flattened patch)
+# print(f"the noisy set {noisy_d.shape}")  # (num_samples, num_patches, flattened patch)
 fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
 # print(f"label shape {label.shape} and val {label[0]}") # looks ok now
 # print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][-1].shape} and not equal to label {fused_seq[0][-1]} at the same pos") #yeap
@@ -242,16 +241,23 @@ fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
 # print(f"feature w shape {w.shape}") #100 dim vector from d
 # print(f"partition of indices S {partition}") # there are 10 groups with 2 elem each
 
-D = 10
-plt.figure(figsize=(4, 4))
-S_matrix = torch.eye(D, D)
-for x in partition:
-    # print(f"wjat is x in S {x[1]}")
-    S_matrix[x[0], x[1]] = 1 / 2
-    S_matrix[x[1], x[0]] = 1 / 2
-plt.matshow(S_matrix, cmap="Greys")
-plt.axis("off")
-plt.savefig("groups_built_in_datagen.png")
+
+def plot_the_batch_partitions(i, D, partition):
+    plt.figure(figsize=(4, 4))
+    S_matrix = torch.eye(D, D)
+    for x in partition:
+        # print(f"wjat is x in S {x[1]}")
+        S_matrix[x[0], x[1]] = 1 / 2
+        S_matrix[x[1], x[0]] = 1 / 2
+    plt.matshow(S_matrix, cmap="Greys")
+    plt.axis("off")
+    plt.savefig(f"batch_groups_png/batch{i}.png")
+
+
+# POC Batch group for In-Batched-Context Learning
+# a new structure / distribution for each batch; since noise is tied to
+# the labels y which are tied to the data distribution - a new noise distrib
+# TODO @DR will have to ascertain this
 
 
 def grouped_data_train_test_split_util(
@@ -300,13 +306,85 @@ def grouped_data_train_test_split_util(
 # Get train and test TODO@DR reason why split train test it this way vs generate
 # a separate test dataset like in jelassi for the grouped case
 
-
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
     fused_seq, label, 0.2, as_torch=True, rng=None
 )
 
-print(x_train.shape)
-print(y_train.shape)
+# print(x_train.shape)
+# print(y_train.shape)
+
+
+# **************************************Get batch groups for In-Context Learning Style Training
+from torch.utils.data import Dataset, DataLoader
+
+
+# Custom class for an already batched dataset
+class PreBatchedDataset(Dataset):
+    def __init__(self, batched_data):
+        self.batched_data = batched_data
+
+    def __len__(self):
+        return len(self.batched_data)
+
+    def __getitem__(self, idx):
+        # Returns an already batched sample
+        return self.batched_data[idx]
+
+
+# Train and test separatelly makes sense
+
+num_batches_train = 100  # when a real number of batches - this takes a while
+batch_size = 128
+num_batches_test = 50
+D = 10
+
+
+def get_batch_groups(num_batches, N=batch_size):
+    # TODO@DR this should have
+    # all parameters of generator;
+    train_set = []
+
+    for i in range(num_batches_train):
+        # different structure on each batch of 128 instances
+        dggen = GroupSampler(N=N, D=10)
+        dataset, y, w, partition = dggen.sample_xs()
+
+        # Each batch will have a different partition as plots show
+        # Effectively a different structure; can think of the batch
+        # as one image
+
+        # plot_the_batch_partitions(i=i, D=10, partition=partition)
+
+        _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
+        fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
+        X = torch.permute(fused_seq, (0, 2, 1))
+        train_set.append((X, label))
+
+    return train_set
+
+
+train_batched_data = get_batch_groups(num_batches_train, batch_size)
+test_batched_data = get_batch_groups(num_batches_test, batch_size)
+
+
+# # Adhoc test ****************************************
+# dataset = PreBatchedDataset(train_batched_data)
+
+# Initialize the DataLoader with the custom Dataset.
+# Crucially, set batch_size=1 because each item returned by
+# __getitem__ is already a full batch. Also, set shuffle=False and
+# collate_fn=None (or a simple identity function) as no further
+# batching or collation is needed.
+# train_loader = DataLoader(dataset, batch_size=1, shuffle=False,
+#                          collate_fn=lambda x: x[0])
+
+# test_loader = DataLoader(dataset, batch_size=1, shuffle=False,
+#                          collate_fn=lambda x: x[0])
+
+
+# for batch_idx, batch in enumerate(test_loader):
+#     features, labels = batch
+#     print(f"Batch {batch_idx}: Features shape {features.shape}, Labels shape {labels.shape}")
 
 
 # **********************************************************

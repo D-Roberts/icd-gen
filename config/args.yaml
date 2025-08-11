@@ -52,6 +52,10 @@ grouped_patches:
 
 
 training:
+    batch_level_partitions: True
+    num_train_batches: 
+    num_test_batches:
+    
     batch_size: 64
     learning_rate: 0.01
 
