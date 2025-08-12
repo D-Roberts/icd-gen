@@ -3,7 +3,10 @@ import os
 import numpy as np
 
 
-# DR: these are not vectorized and not torch
+# DR: these are not vectorized and not torch; from the Incontext Denoise Code -
+# TODO@DR: torchify and debug. Use efficient torch implementations where available.
+
+
 def logsumexp(z):
     """z is a 1D numpy array
     Computes the log of the sum of exponentials of input elements.

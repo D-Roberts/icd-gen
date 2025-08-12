@@ -4,15 +4,17 @@
 
     *0. Code for models on the new patch structure datagen (priority 1)
 
-        *reconsider if to freeze or not projectors (now frozen)
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways
         * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? 
 
+        * also partition of indeces itneresting. Maybe leverage it more. Make it random.
+
         * MAE works better than MSE as theory suggests
 
-        * Not better with the large GPT2 frozen backbone on the small set.
+        * Not better with the large GPT2 frozen backbone on the small set. Should really have
+        a ViT here though. 
         * nlmeans per one-shot does better than a learned one-layer attention with pos embeds and input output projections
 
         * When mimic an in-context where partitions generated per batch - model perf goes down.

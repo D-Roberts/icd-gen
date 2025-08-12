@@ -112,11 +112,12 @@ class GroupSampler(DataSampler):
         else:
             self.gamma_dict = gamma_dict
 
-    def partition(self, D, L):
+    def partition(self, D, L, seed=42):
         """
         Get the
-        TODO@DR: not sure if need a seed here for
+        TODO@DR: if I want every S set different, I must change the seed here.
         in-context variation task to task"""
+        torch.manual_seed(seed)
 
         return torch.randperm(D).view(L, -1)
 
@@ -128,7 +129,8 @@ class GroupSampler(DataSampler):
         TODO@DR: maybe control gamma noise param as a function of y
         instead of the group index.
 
-        Not sure yet how to make in context
+        Not sure yet how to best make in context, various options. Batch context
+        seems apt as well.
         """
 
         # make a feature here; the signal in the dataset
@@ -142,8 +144,10 @@ class GroupSampler(DataSampler):
         noise = torch.randn(self.N, self.D, self.d) * sigma
         X = torch.zeros(self.N, self.D, self.d)
 
-        for i in range(self.N):
-            l = torch.randint(self.L, (1,))[0]
+        for i in range(self.N):  # every example
+            l = torch.randint(self.L, (1,))[0]  # a group index
+            # print("l ", l)
+            print("partition", self.S)  #
             R = self.S[l]
             for j in range(self.D):
                 if j in R:  # this here creates artif groups by snr
@@ -349,6 +353,11 @@ def get_batch_groups(num_batches, N=batch_size):
         dggen = GroupSampler(N=N, D=10)
         dataset, y, w, partition = dggen.sample_xs()
 
+        print(
+            "partition", partition
+        )  # TODO@DR - if I want different indeces per groups
+        # and groups dim - this code needs updating
+
         # Each batch will have a different partition as plots show
         # Effectively a different structure; can think of the batch
         # as one image
@@ -363,12 +372,12 @@ def get_batch_groups(num_batches, N=batch_size):
     return train_set
 
 
-train_batched_data = get_batch_groups(num_batches_train, batch_size)
-test_batched_data = get_batch_groups(num_batches_test, batch_size)
+train_batched_data = get_batch_groups(num_batches=2, N=2)
+# test_batched_data = get_batch_groups(num_batches_test, N)
 
 
 # # Adhoc test ****************************************
-# dataset = PreBatchedDataset(train_batched_data)
+dataset = PreBatchedDataset(train_batched_data)
 
 # Initialize the DataLoader with the custom Dataset.
 # Crucially, set batch_size=1 because each item returned by
@@ -378,13 +387,16 @@ test_batched_data = get_batch_groups(num_batches_test, batch_size)
 # train_loader = DataLoader(dataset, batch_size=1, shuffle=False,
 #                          collate_fn=lambda x: x[0])
 
-# test_loader = DataLoader(dataset, batch_size=1, shuffle=False,
-#                          collate_fn=lambda x: x[0])
+test_loader = DataLoader(
+    dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
+)
 
 
-# for batch_idx, batch in enumerate(test_loader):
-#     features, labels = batch
-#     print(f"Batch {batch_idx}: Features shape {features.shape}, Labels shape {labels.shape}")
+for batch_idx, batch in enumerate(test_loader):
+    features, labels = batch
+    print(
+        f"Batch {batch_idx}: Features shape {features.shape}, Labels shape {labels.shape}"
+    )
 
 
 # **********************************************************
