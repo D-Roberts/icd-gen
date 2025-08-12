@@ -1,4 +1,4 @@
-## WIP - codebase under development
+## WIP - codebase under development non-publically, in private repository until publication.
 
 ### TODO@DR next:
 
