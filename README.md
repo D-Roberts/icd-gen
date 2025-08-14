@@ -1,7 +1,8 @@
-### WIP - codebase under development non-publicly, in private repository until publication.
+### WIP - codebase under development.
 
 ### TODO@DR running list:
 
+    *-1. Move code to private repo.
     *0. Code for models on the new patch structure datagen (priority 1)
 
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
