@@ -117,7 +117,7 @@ class GroupSampler(DataSampler):
         Get the
         TODO@DR: if I want every S set different, I must change the seed here.
         in-context variation task to task"""
-        torch.manual_seed(seed)
+        # torch.manual_seed(seed)
 
         return torch.randperm(D).view(L, -1)
 
@@ -147,7 +147,7 @@ class GroupSampler(DataSampler):
         for i in range(self.N):  # every example
             l = torch.randint(self.L, (1,))[0]  # a group index
             # print("l ", l)
-            print("partition", self.S)  #
+            # print("partition", self.S)  #
             R = self.S[l]
             for j in range(self.D):
                 if j in R:  # this here creates artif groups by snr
@@ -207,7 +207,8 @@ class GroupSampler(DataSampler):
 
         # because the last gnoised patch should be the query and
         # its clean version the label, simply set the last clean
-        # patch in the fused to 0
+        # patch in the fused to 0 TODO@DR reason through how this affects the mean loss
+        # calculation and the grad
 
         patch_dim = X_clean.shape[-1]
         label = torch.zeros((X_clean.shape[0], X_clean.shape[-1] * 2))
@@ -220,7 +221,7 @@ class GroupSampler(DataSampler):
         # want to have dirty first in seq
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
 
-        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes
+        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different
 
         return fused_seq, label
 
@@ -353,10 +354,10 @@ def get_batch_groups(num_batches, N=batch_size):
         dggen = GroupSampler(N=N, D=10)
         dataset, y, w, partition = dggen.sample_xs()
 
-        print(
-            "partition", partition
-        )  # TODO@DR - if I want different indeces per groups
-        # and groups dim - this code needs updating
+        # print(
+        #     "partition", partition
+        # )  # TODO@DR - double check if I want different groups and partitions
+        # and then if this code does this like I want
 
         # Each batch will have a different partition as plots show
         # Effectively a different structure; can think of the batch
@@ -372,12 +373,14 @@ def get_batch_groups(num_batches, N=batch_size):
     return train_set
 
 
-train_batched_data = get_batch_groups(num_batches=2, N=2)
-# test_batched_data = get_batch_groups(num_batches_test, N)
+train_batched_data = get_batch_groups(num_batches=num_batches_train, N=batch_size)
+test_batched_data = get_batch_groups(
+    num_batches_test, batch_size
+)  # the case with groups per batch
 
 
 # # Adhoc test ****************************************
-dataset = PreBatchedDataset(train_batched_data)
+# dataset = PreBatchedDataset(train_batched_data)
 
 # Initialize the DataLoader with the custom Dataset.
 # Crucially, set batch_size=1 because each item returned by
@@ -387,16 +390,16 @@ dataset = PreBatchedDataset(train_batched_data)
 # train_loader = DataLoader(dataset, batch_size=1, shuffle=False,
 #                          collate_fn=lambda x: x[0])
 
-test_loader = DataLoader(
-    dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
-)
+# test_loader = DataLoader(
+#     dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
+# )
 
 
-for batch_idx, batch in enumerate(test_loader):
-    features, labels = batch
-    print(
-        f"Batch {batch_idx}: Features shape {features.shape}, Labels shape {labels.shape}"
-    )
+# for batch_idx, batch in enumerate(test_loader):
+#     features, labels = batch
+#     print(
+#         f"Batch {batch_idx}: Features shape {features.shape}, Labels shape {labels.shape}"
+#     )
 
 
 # **********************************************************

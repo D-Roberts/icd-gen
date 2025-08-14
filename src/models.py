@@ -128,13 +128,17 @@ class TransformerModelV2(nn.Module):
         if self.add_frozen_kernel:
             d_model = 768
             if backbone == "GPT2":
+                self.bb = "GPT2"
                 self._backbone = GPT2Model.from_pretrained("gpt2")
+                for param in self._backbone.base_model.parameters():
+                    param.requires_grad = False
             elif backbone == "ViT":
-                self._backbone == ViTModel.from_pretrained(
-                    "google/vit-base-patch16-224"
-                )
-            for param in self._backbone.base_model.parameters():
-                param.requires_grad = False
+                self.bb = "ViT"
+                vitm = ViTModel.from_pretrained("google/vit-base-patch16-224")
+                # vit comes with its own position embeddings
+                self._backbone = vitm.encoder
+                for param in self._backbone.parameters():
+                    param.requires_grad = False
 
         # these
         self.W_KQ = weight_matrix(d_model, d_model, mode="default")
@@ -173,7 +177,10 @@ class TransformerModelV2(nn.Module):
         # Choose to add a frozen pretrained backbone, as a kernel projector
 
         if self.add_frozen_kernel:
-            embedded = self._backbone(inputs_embeds=embedded).last_hidden_state
+            if self.bb == "GPT2":
+                embedded = self._backbone(inputs_embeds=embedded).last_hidden_state
+            if self.bb == "ViT":
+                embedded = self._backbone(embedded).last_hidden_state
 
         embedded = torch.permute(embedded, (0, 2, 1))
         # the rest of this expects shape unpermuted

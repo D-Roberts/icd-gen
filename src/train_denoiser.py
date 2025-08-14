@@ -405,7 +405,13 @@ def train(model, args):
 
 
 def main(args):
-    model = TransformerModelV2(args.training["context_len"], args.training["dim_n"])
+    model = TransformerModelV2(
+        context_length=args.training["context_len"],
+        dim_input=args.training["dim_n"],
+        add_frozen_kernel=True,
+        backbone="ViT",
+    )
+    print(model)
 
     model.to(device)
     model.train()
