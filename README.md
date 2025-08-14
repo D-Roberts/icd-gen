@@ -23,6 +23,7 @@
 
         * save the datasets after generating and load from disk- it gets slow.
         
+        * do some input normalization
 
     *1. factor in the noise drift code from my other repo [the icd first task]
     *2. there is a bug in the plot loss baselines code [the icd first task]

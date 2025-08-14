@@ -179,6 +179,7 @@ class TransformerModelV2(nn.Module):
         if self.add_frozen_kernel:
             if self.bb == "GPT2":
                 embedded = self._backbone(inputs_embeds=embedded).last_hidden_state
+
             if self.bb == "ViT":
                 embedded = self._backbone(embedded).last_hidden_state
 
