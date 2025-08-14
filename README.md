@@ -1,12 +1,13 @@
-## WIP - codebase under development non-publically, in private repository until publication.
+### WIP - codebase under development non-publicly, in private repository until publication.
 
-### TODO@DR next:
+### TODO@DR running list:
 
     *0. Code for models on the new patch structure datagen (priority 1)
 
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways
+
         * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? 
 
         * also partition of indeces itneresting. Maybe leverage it more. Make it random.
@@ -15,6 +16,7 @@
 
         * Not better with the large GPT2 frozen backbone on the small set. Should really have
         a ViT here though. 
+
         * nlmeans per one-shot does better than a learned one-layer attention with pos embeds and input output projections
 
         * When mimic an in-context where partitions generated per batch - model perf goes down.
@@ -22,17 +24,14 @@
         * save the datasets after generating and load from disk- it gets slow.
         
 
-    *1. factor in the noise drift code from my other repo
-    *2. there is a bug in the plot loss baselines code
-    *3. there might be a bug in the batch loss calculation and/or plotting
-    *4. likely a bug in the 2-head archi
-    *5. move more params and train choices and archi and data gen options to yaml for cleaner code and faster iteration.
-    *6. Refactor archis to: 1. Implement exactly the archi in the theory section. 2. Allow for log of 
-    last layer activations and arg to last layer softmax. For the theoretical 2-layer, possibly do not
-    linearize softmax.
+    *1. factor in the noise drift code from my other repo [the icd first task]
+    *2. there is a bug in the plot loss baselines code [the icd first task]
+    *3. there might be a bug in the batch loss calculation and/or plotting [the icd first task]
+    *4. likely a bug in the 2-head archi [the icd first task]
+    *6. Refactor archis to implement exactly the archis in the theory section. 
     *7. Refactor energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
-    *8. Torchify out of numpy pretty much everything up until matplotlib.
-    *9. to be cont.
+    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians.
+   
     
 
 

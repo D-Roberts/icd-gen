@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 
-# DR: these are not vectorized and not torch; from the Incontext Denoise Code -
+# these are from the Incontext Denoise Code.
 # TODO@DR: torchify and debug. Use efficient torch implementations where available.
 
 
@@ -41,6 +41,3 @@ def grad_energy(q, X, c_lambda, beta, c_k):
     a = softmax(scores)  # so the variant with the softmax
     # print("debug a shape in grad_energy*******:", a.shape)
     return c_lambda * q - X @ a
-
-
-# TODO@DR: vectorize and torchify all
