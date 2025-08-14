@@ -15,8 +15,7 @@
 
         * MAE works better than MSE as theory suggests
 
-        * Not better with the large GPT2 frozen backbone on the small set. Should really have
-        a ViT here though. 
+        * Not better with the large GPT2 frozen backbone on the small set. Haven't tested the ViT yet.
 
         * nlmeans per one-shot does better than a learned one-layer attention with pos embeds and input output projections
 
