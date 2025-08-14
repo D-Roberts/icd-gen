@@ -6,7 +6,7 @@ from transformers import GPT2Model, GPT2Config
 from tqdm import tqdm
 
 import math
-from transformers import GPT2Model
+from transformers import GPT2Model, ViTModel
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -37,7 +37,6 @@ def weight_matrix(dim_in, dim_out, mode="default"):
     return torch.nn.Parameter(W_tensor)
 
 
-# An example patch embedding - will change later
 # now the sequence has double width due to concat clean and noisy
 class PatchEmbedding(nn.Module):
     def __init__(self, embed_dim, dim_in):
@@ -74,6 +73,8 @@ class SinusoidalPositionEmbeddings(nn.Module):
 """
 
 
+# TODO@DR: If I put a SiT in - recall that I had an issue with their Sin Pos Embed-
+# double check what that was about. Also recall not in HF.
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
@@ -116,6 +117,7 @@ class TransformerModelV2(nn.Module):
         dim_input,
         d_model=32,
         add_frozen_kernel=False,
+        backbone="ViT",
         n_layer=1,
         n_head=1,
     ):
@@ -125,7 +127,12 @@ class TransformerModelV2(nn.Module):
 
         if self.add_frozen_kernel:
             d_model = 768
-            self._backbone = GPT2Model.from_pretrained("gpt2")
+            if backbone == "GPT2":
+                self._backbone = GPT2Model.from_pretrained("gpt2")
+            elif backbone == "ViT":
+                self._backbone == ViTModel.from_pretrained(
+                    "google/vit-base-patch16-224"
+                )
             for param in self._backbone.base_model.parameters():
                 param.requires_grad = False
 
