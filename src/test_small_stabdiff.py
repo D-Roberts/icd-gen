@@ -30,8 +30,7 @@ print(pipe.model)
 # It is likely that replacing the normalization layers with tanh
 # 1. means that some layers will be untrained so a fully pretrained cannot
 # be used
-# 2. even if training, might lead to some perf degradation since their
-# ablations showed adaptive layer norm was important
+
 
 # DiTTransformer2DModel(
 #   (pos_embed): PatchEmbed(
