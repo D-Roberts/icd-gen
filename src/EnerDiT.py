@@ -11,7 +11,7 @@ import torch.nn as nn
 class DyTanh(nn.Module):
     """"""
 
-    def __init__(self, normalized_shape=16, channels_last=True, alpha_init_value=0.5):
+    def __init__(self, normalized_shape, channels_last=True, alpha_init_value=0.5):
         super().__init__()
         self.alpha_init_value = alpha_init_value
         self.channels_last = channels_last
@@ -33,3 +33,24 @@ class DyTanh(nn.Module):
 
 
 # Ad-hoc test
+X_train = torch.randn(4, 10, 3, requires_grad=True)  # (B, H, W,C)
+dyt = DyTanh(normalized_shape=(4, 10, 3), channels_last=True, alpha_init_value=0.1)
+dyt_out = dyt(X_train)
+
+dyt_out.retain_grad()
+
+dummy_loss = dyt_out.sum()
+dummy_loss.backward()
+
+# Let's see its grad
+print(dyt_out.grad)
+print(dyt_out)
+
+"""
+will start with the EnerDiT archi and then build buildinblocks.
+
+This will not be a state of the art scale.
+
+I will then have to find ways to train it faster and with 
+less compute / one GPU.
+"""
