@@ -129,6 +129,32 @@ class EnerDiTFinal(nn.Module):
         return 0.5 * torch.inner(x, y)
 
 
+class ScoreFinalLayer(nn.Module):
+    """
+    this is before the Energy final final
+    """
+
+    def __init__(self, d_model, input_dim, output_dim, channels, context_len):
+        super().__init__()
+
+        self.dyt_final = DyTanh((d_model, context_len))
+
+        # TODO@DR: not sure yet about the modulation.
+        # TODO@DR: also what am I really predicting here? The socre, the energy or the
+        # the clean image?
+        self.final_dit_layer = nn.Linear(
+            d_model, input_dim * output_dim * channels, bias=True
+        )
+
+    def forward(self, x):
+        x = torch.permute(x, (0, 2, 1))
+        x = self.dyt_final(x)
+        print("shape of x as it comes out of dyt in final layer ", x.shape)
+
+        x = self.final_dit_layer(torch.permute(x, (0, 2, 1)))
+        return x
+
+
 # Taking inspiration from https://github.com/facebookresearch/DiT/blob/main/models.py
 class EnerDiT(nn.Module):
     """
@@ -161,15 +187,21 @@ class EnerDiT(nn.Module):
         # context_len is num of patches
         self.pos_embed = SinusoidalPositionalEmbedding(d_model, context_len)
 
-        # The way I see it now, I don't need the Timestep embedder or
-        # the label embedder
+        # TODO@DR: see about the time embedder
 
         # then comes the set of N EnerDiT blocks TODO@DR
-
-        self.final_dit_layer = nn.Linear(d_model, output_dim * input_dim * channels)
+        self.final_score_layer = ScoreFinalLayer(
+            d_model, input_dim, output_dim, channels, context_len
+        )
 
         # this should return the energy; use the last token
         self.final_enerdit_layer = EnerDiTFinal()
+
+    def pre_init(self):
+        """will init weights here and w whatever else I
+        want to init
+        """
+        pass
 
     def forward(self, x):
         b_s, in_d, out_d, c, context_len = x.shape
@@ -180,7 +212,7 @@ class EnerDiT(nn.Module):
 
         x = self.DyT(x_for_dyt)
 
-        x.retain_grad()  # need a hook
+        # x.retain_grad()  # need a hook
         # print(x.view(b_s, -1).shape)
         # . flaten for embed
         x = x.view(b_s, in_d * out_d * c, -1)
@@ -214,7 +246,7 @@ class EnerDiT(nn.Module):
         # add enerdit blocks
 
         # add final (score out layer)
-        score = self.final_dit_layer(embedded)
+        score = self.final_score_layer(embedded)
         # add enerditfinal
         print("score shape ", score.shape)
 

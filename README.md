@@ -74,11 +74,11 @@ https://www.comet.com/ai-daor/icd-gen/view/new/panels
 
 
 Initial code references:
+* https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 * https://github.com/mattsmart/in-context-denoising
 * https://github.com/dtsip/in-context-learning/tree/main/src
 * https://github.com/jiachenzhu/DyT
 * https://github.com/huggingface/transformers/tree/main/src/transformers
-* https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 * https://github.com/LabForComputationalVision/memorization_generalization_in_diffusion_models/tree/main
 * VIT learn spatial struct https://proceedings.neurips.cc/paper_files/paper/2022/hash/f69707de866eb0805683d3521756b73f-Abstract-Conference.html
 * https://github.com/facebookresearch/DiT/blob/main/models.py
