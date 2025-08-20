@@ -253,3 +253,24 @@ class SpaceLoss(nn.Module):
 
     def forward(self, preds, labels):
         pass
+
+
+class Trainer:
+    """
+    To train the EnerDiT
+    """
+
+    def __init__(
+        self,
+    ):
+        pass
+
+    def train(
+        self,
+    ):
+        pass
+
+    def eval(
+        self,
+    ):
+        pass
