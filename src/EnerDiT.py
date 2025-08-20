@@ -123,7 +123,9 @@ class EnerDiTFinal(nn.Module):
     def forward(self, x, y):
         """return energy from score and query patch, which is last patch
         x here will be the output of the previous layer and
-        y would be the embedded noisy query (already extracted from sequence)
+        y would be the noisy query (already extracted from sequence)
+
+
         """
 
         return 0.5 * torch.inner(x, y)
@@ -140,6 +142,8 @@ class ScoreFinalLayer(nn.Module):
         self.dyt_final = DyTanh((d_model, context_len))
 
         # TODO@DR: not sure yet about the modulation.
+        # TODO: @DR a potential differentiable one.
+
         # TODO@DR: also what am I really predicting here? The socre, the energy or the
         # the clean image?
         self.final_dit_layer = nn.Linear(
@@ -152,6 +156,48 @@ class ScoreFinalLayer(nn.Module):
         print("shape of x as it comes out of dyt in final layer ", x.shape)
 
         x = self.final_dit_layer(torch.permute(x, (0, 2, 1)))
+        return x
+
+
+class EnerDiTBlock(nn.Module):
+    """
+    no layernorm or adaptvie ones for now.
+    dyt
+    """
+
+    def __init__(self, d_model, context_len, num_heads=1, mlp_ratio=4.0):  # as in DiT
+        super().__init__()
+
+        # TODO@DR: will have to check on all the logic of where dyt gets applyied
+        self.dyt1 = DyTanh((d_model, context_len))
+        self.attn = Attention(
+            d_model, num_heads, qkv_bias=True
+        )  # TODO@DR there are some kwargs here will have to check them out
+        self.dyt2 = DyTanh((d_model, context_len))
+
+        mlp_hidden_dim = int(0.4 * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+        self.mlp = Mlp(
+            in_features=d_model,
+            hidden_features=mlp_hidden_dim,
+            act_layer=approx_gelu,
+            drop=0,
+        )
+        # TODO@DR: will have to checkout the timm implementations as I typically
+        # work with HF
+
+    def forward(self, x):
+        # not modulating for now
+        x = torch.permute(x, (0, 2, 1))
+        # print(f"shape of x in enerditblock after reshape", x.shape) # B, d_model, context_len
+        x = self.dyt1(x)
+        x = torch.permute(x, (0, 2, 1))  # for attn
+        x = x + self.attn(x)
+        x = torch.permute(x, (0, 2, 1))  # for dyt TODO@DR: refactor DyT layer
+        x = self.dyt2(x)
+        x = torch.permute(x, (0, 2, 1))  # for mlp
+        x = x + self.mlp(x)
         return x
 
 
@@ -170,6 +216,8 @@ class EnerDiT(nn.Module):
         output_dim=10,
         channels=3,
         num_heads=1,
+        depth=1,
+        mlp_ratio=4,
     ):
         super(EnerDiT, self).__init__()
 
@@ -189,13 +237,19 @@ class EnerDiT(nn.Module):
 
         # TODO@DR: see about the time embedder
 
-        # then comes the set of N EnerDiT blocks TODO@DR
+        # then comes the list of N EnerDiT blocks
+
+        self.blocks = nn.ModuleList(
+            [EnerDiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
+        )
+
         self.final_score_layer = ScoreFinalLayer(
             d_model, input_dim, output_dim, channels, context_len
         )
 
         # this should return the energy; use the last token
         self.final_enerdit_layer = EnerDiTFinal()
+        self.pre_init()
 
     def pre_init(self):
         """will init weights here and w whatever else I
@@ -241,18 +295,22 @@ class EnerDiT(nn.Module):
         )  # [1, 10, 32] will add same order each batch
         # print(f"pos embed shape********* {pos_embed.shape}")
 
-        embedded = patch_embed + pos_embed
+        x = patch_embed + pos_embed
 
         # add enerdit blocks
+        for block in self.blocks:
+            x = block(x)
 
         # add final (score out layer)
-        score = self.final_score_layer(embedded)
+        score = self.final_score_layer(x)
         # add enerditfinal
         print("score shape ", score.shape)
 
         # this is for all patches
         # y = x[:,:,:,-1].view()
-        energy = self.final_enerdit_layer(score, x.view(b_s, context_len, -1))
+
+        print(f"what is out of block shape", score.shape)
+        energy = self.final_enerdit_layer(score, x_for_dyt.view(b_s, context_len, -1))
 
         # only for last patch the noisy query
         return energy[:, :, -1]

@@ -5,6 +5,11 @@
     *-2. Move code to private repo soon.
 
     *-1. Code up the in-context energy based density.
+        - WIP: next: 
+                - put some fused patches through the current EnerDiT archi.
+                - see about the noise schedule;
+                - the losses
+                - the custom training with the double backprop
 
     *0. Code for models on the new patch structure datagen (priority 1)
 
