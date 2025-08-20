@@ -222,6 +222,7 @@ class EnerDiT(nn.Module):
         # y = x[:,:,:,-1].view()
         energy = self.final_enerdit_layer(score, x.view(b_s, context_len, -1))
 
+        # only for last patch the noisy query
         return energy[:, :, -1]
 
 
@@ -235,3 +236,20 @@ energy.retain_grad()
 dummy_loss = energy.sum()
 dummy_loss.backward()
 # print(energy.grad)
+
+
+class TimeLoss(nn.Module):
+    def __init__(self):
+        super(TimeLoss, self).__init__()
+
+    def forward(self, preds, label):
+        pass
+
+
+class SpaceLoss(nn.Module):
+    def __init__(self):
+        super(SpaceLoss, self).__init__()
+        pass
+
+    def forward(self, preds, labels):
+        pass
