@@ -103,7 +103,7 @@ class GroupSampler(DataSampler):
             self.S = S
 
         if gamma_dict is None:
-            self.gamma_dict = {}  # create set gamma params; by default equal
+            self.gamma_dict = {}  # create set gamma params;
             self.gamma_dict["y1"] = {
                 "ga": torch.tensor([9.0]),
                 "gb": torch.tensor([0.50]),
@@ -126,8 +126,7 @@ class GroupSampler(DataSampler):
 
         y is  from the classification task in jelassi paper.
 
-        TODO@DR: maybe control gamma noise param as a function of y
-        instead of the group index.
+        Control gamma noise param as a function of y. Instead could depend on the group index.
 
         Not sure yet how to best make in context, various options. Batch context
         seems apt as well.
@@ -137,11 +136,15 @@ class GroupSampler(DataSampler):
         w = torch.randn(self.d)
         w /= w.square().sum().sqrt()
 
-        y = torch.randn(self.N).sign()  # this
+        y = torch.randn(
+            self.N
+        ).sign()  # this is what was the classification label in jelassi, 1 or -1, per instance
         # leave it
         q = math.log(self.d) / self.D
         sigma = 1 / math.sqrt(self.d)
-        noise = torch.randn(self.N, self.D, self.d) * sigma
+        noise = (
+            torch.randn(self.N, self.D, self.d) * sigma
+        )  # gaussian noise with this sigma
         X = torch.zeros(self.N, self.D, self.d)
 
         for i in range(self.N):  # every example
@@ -150,7 +153,9 @@ class GroupSampler(DataSampler):
             # print("partition", self.S)  #
             R = self.S[l]
             for j in range(self.D):
-                if j in R:  # this here creates artif groups by snr
+                if (
+                    j in R
+                ):  # this here creates artif groups by snr; X[i][j] is meant to be the pixel
                     X[i][j] = y[i] * w + noise[i][j]
                 else:  # TODO@DR: rethink this SNR
                     prob = 2 * (torch.rand(1) - 0.5)
@@ -165,7 +170,7 @@ class GroupSampler(DataSampler):
         # TODO@DR: I might need to rethink how the patches in one sample are
         # and how in context is defined
 
-        # last dim can be viewed as a patch linearized
+        # last dim can be viewed as a patch flattened
         return X, y, w, self.S
 
     def add_gamma_noise(self, X_clean=None, y=None):
@@ -193,6 +198,8 @@ class GroupSampler(DataSampler):
             noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
             X_gnoisy[i, :, :] += noisy_patches
 
+        # so each instance will have noise from either gamma1 or gamma2 randomly as y is drawn but related to
+        # how the underlying data is generated. Not sure if I want to do this or not.
         return X_clean, X_gnoisy, y
 
     def get_fused_sequence(self, X_clean=None, X_dirty=None):
@@ -218,7 +225,7 @@ class GroupSampler(DataSampler):
             :, -1
         ] = 0.0  # 0 out last patch where the query is on the clean supervision
 
-        # want to have dirty first in seq
+        # want to have dirty first in fused
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
 
         # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different

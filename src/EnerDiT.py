@@ -4,6 +4,8 @@ A modified DiT with DyT for learning energies: the EnerDiT.
 
 import torch
 import torch.nn as nn
+import math
+from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
 
 # As in Transformers without normalization
@@ -22,6 +24,9 @@ class DyTanh(nn.Module):
 
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
+        print("In tanh x shape", x.shape)
+        print("In tanh weight shape ", self.weight.shape)
+
         if self.channels_last:
             x = x * self.weight + self.bias
         else:
@@ -67,6 +72,8 @@ class PatchEmbedding(nn.Module):
         return x
 
 
+# TODO@DR: recall that I had an issue with the DiT/SiT Sin Pos Embed-
+# double check what that was about. Also recall not in HF.
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
@@ -103,33 +110,128 @@ I will then have to find ways to train it faster and with
 less compute / one GPU.
 
 Start very simple and build up.
+
+TODO@DR: determine how to encode the query patch: with the context or not
 """
 
 
+class EnerDiTFinal(nn.Module):
+    def __init__(self):
+        super(EnerDiTFinal, self).__init__()
+        pass
+
+    def forward(self, x, y):
+        """return energy from score and query patch, which is last patch
+        x here will be the output of the previous layer and
+        y would be the embedded noisy query (already extracted from sequence)
+        """
+
+        return 0.5 * torch.inner(x, y)
+
+
+# Taking inspiration from https://github.com/facebookresearch/DiT/blob/main/models.py
 class EnerDiT(nn.Module):
-    def __init__(self, batch, input_dim, output_dim, channels):
+    """
+    assume at this point that the patches are cut up and fused already.
+    """
+
+    def __init__(
+        self,
+        batch=4,
+        context_len=5,
+        d_model=32,
+        input_dim=10,
+        output_dim=10,
+        channels=3,
+        num_heads=1,
+    ):
         super(EnerDiT, self).__init__()
 
-        self.DyT = DyTanh((batch, input_dim, output_dim, channels))
+        self.DyT = DyTanh((batch, input_dim * output_dim * channels, context_len))
 
-        self.linear = nn.Linear(input_dim * output_dim * channels, output_dim)
+        # TODO@DR: note that the DiT pos embeddings are slightly different albeit
+        # still sincos; might want to come back to this, it might matter
+
+        # Can't use the Patch embedder from timm bc my patches already come
+        # in patchified and fused.
+
+        self.embedpatch = PatchEmbedding(d_model, input_dim * output_dim * channels)
+        #
+        # self.embedpatch = PatchEmbed(input_dim, input_dim, channels, d_model, bias=True)
+        # context_len is num of patches
+        self.pos_embed = SinusoidalPositionalEmbedding(d_model, context_len)
+
+        # The way I see it now, I don't need the Timestep embedder or
+        # the label embedder
+
+        # then comes the set of N EnerDiT blocks TODO@DR
+
+        self.final_dit_layer = nn.Linear(d_model, output_dim * input_dim * channels)
+
+        # this should return the energy; use the last token
+        self.final_enerdit_layer = EnerDiTFinal()
 
     def forward(self, x):
-        b_s, in_d, out_d, c = x.shape
-        x = self.DyT(x)
+        b_s, in_d, out_d, c, context_len = x.shape
+
+        x_for_dyt = x.view(b_s, in_d * out_d * c, context_len)
+
+        # print(x_for_dyt.shape)
+
+        x = self.DyT(x_for_dyt)
+
         x.retain_grad()  # need a hook
         # print(x.view(b_s, -1).shape)
+        # . flaten for embed
+        x = x.view(b_s, in_d * out_d * c, -1)
+        # print("x shape after Dyt and reshape", x.shape)
 
-        return self.linear(x.view(b_s, -1))
+        # # permute so that (b, context_len, dim)
+        # permuted = torch.permute(x, (0, 2, 1))
+        permuted = torch.permute(x, (0, 2, 1))
+        # print("permuted shape", permuted.shape)
+        patch_embed = self.embedpatch(permuted)
+
+        # reshape for patch_embed
+        # x = x.view(b_s, in_d, out_d, c, context_len)
+        # TODO@DR: this won't work because I have H different from W
+        # x = torch.permute(x, (0, 3, 1, 2, 4))
+        # print("x shape", x.shape)
+
+        # patch_embed = self.embedpatch(x)
+
+        # TODO@DR this isn't working well here on shapes fix
+        # patch_embed = self.embedpatch(x.view(b_s, c, 250, -1))
+        # print("patch_embed pos ", patch_embed.shape)
+
+        pos_embed = self.pos_embed(
+            patch_embed
+        )  # [1, 10, 32] will add same order each batch
+        # print(f"pos embed shape********* {pos_embed.shape}")
+
+        embedded = patch_embed + pos_embed
+
+        # add enerdit blocks
+
+        # add final (score out layer)
+        score = self.final_dit_layer(embedded)
+        # add enerditfinal
+        print("score shape ", score.shape)
+
+        # this is for all patches
+        # y = x[:,:,:,-1].view()
+        energy = self.final_enerdit_layer(score, x.view(b_s, context_len, -1))
+
+        return energy[:, :, -1]
 
 
 # AdHoc testing
-X_train = torch.randn(4, 10, 10, 3, requires_grad=True)  # (B, ,C)
-model = EnerDiT(4, 10, 10, 3)
-model_out = model(X_train)
-model_out.retain_grad()
+X_train = torch.randn(4, 10, 10, 3, 5, requires_grad=True)  # (B, ,C, context_len)
+model = EnerDiT()
+energy = model(X_train)
+energy.retain_grad()
 
 
-dummy_loss = model_out.sum()
+dummy_loss = energy.sum()
 dummy_loss.backward()
-print(model_out.grad)
+# print(energy.grad)
