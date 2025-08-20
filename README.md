@@ -2,7 +2,10 @@
 
 ### TODO@DR running list:
 
-    *-1. Move code to private repo.
+    *-2. Move code to private repo soon.
+
+    *-1. Code up the in-context energy based density.
+
     *0. Code for models on the new patch structure datagen (priority 1)
 
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
@@ -78,3 +81,4 @@ Initial code references:
 * https://github.com/smarter-vlm/smarter/blob/main/main_reasoner.py
 * https://github.com/LabForComputationalVision/memorization_generalization_in_diffusion_models/tree/main
 * VIT learn spatial struct https://proceedings.neurips.cc/paper_files/paper/2022/hash/f69707de866eb0805683d3521756b73f-Abstract-Conference.html
+* https://github.com/facebookresearch/DiT/blob/main/models.py
