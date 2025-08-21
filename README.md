@@ -1,8 +1,8 @@
-### WIP - codebase under development.
+### WIP - codebase under development under private repo until publication.
 
 ### TODO@DR running list:
 
-    *-2. Move code to private repo soon.
+    *-2. Move code to private repo (and Comet tracking) [Done].
 
     *-1. Code up the in-context energy based density.
         - WIP: next: 
