@@ -81,7 +81,8 @@ class Trainer:
         optimizer.zero_grad()
         energy, space_score, time_score = model(xs)
         qenergy = energy[:, -1]
-        # it isn't the energy that should go in loss
+
+        # TODO@DR it isn't the energy that should go in loss but I want it for density and analysis
 
         # print("in train step device of xs ys", xs.device, ys.device)
 
@@ -284,29 +285,14 @@ print(f"output {output}\n")
 
 print(f"intermed {score.shape}\n")
 
-# TODO@DR could I not just use Shannon-L? Because my setup is simpler now
-# and I am basically predicting normalized probabilities
-
-# Or Gen MAD
-
-# TODO @ DR: understand exactly who the space and time gradients of U are
-# in the compute graph - to use in loss
-
-# TODO@ DR understand exactly how to use the time derivative of U in my
-# setup (well, first see where it fits in their calculation)
-# there could also be some shortcuts to get the desired grads.
-
-# TODO@DR: frame it as a two-head: space head and time head to make up
-# the energy head.
-
-# TODO@DR: do wonder how to use directly the energy in loss -
-# maybe the shannon - lev loss? since sth like log p - log q
 
 # TODO@Note that I could augment the diffusion process with the
 # context for some time steps and then let a few time steps
 # in a sort of multitask learning fashion.
 
 # TODO@ recall torch.bmm might be faster if I need a matmul
+
+# TODO@DR explore the compute graph for shortcuts
 
 # time schedule from DiT
 t = torch.randint(
