@@ -80,7 +80,8 @@ class Trainer:
     def train_step(self, model, xs, ys, optimizer, loss_funct, loss_funcs, t=1):
         optimizer.zero_grad()
         energy, space_score, time_score = model(xs)
-        qenergy = energy[:, -1]  # it isn't the energy that should go in
+        qenergy = energy[:, -1]
+        # it isn't the energy that should go in loss
 
         # print("in train step device of xs ys", xs.device, ys.device)
 

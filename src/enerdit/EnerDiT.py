@@ -131,6 +131,10 @@ class EnerdiTFinal(nn.Module):
         return 0.5 * (x * y).sum(dim=-1)
 
 
+# TODO@DR: I need one other layer I think for Time and Space
+# heads
+
+
 class ScoreFinalLayer(nn.Module):
     """
     this is before the Energy final final
@@ -146,6 +150,7 @@ class ScoreFinalLayer(nn.Module):
 
         # TODO@DR: also what am I really predicting here? The socre, the energy or the
         # the clean image?
+
         self.final_dit_layer = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):

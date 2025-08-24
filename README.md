@@ -5,6 +5,7 @@
 
     *-1. Code up the in-context energy based density.
         - WIP
+        - Comet panels will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
                 
 
     *0. Code for models on the new patch structure datagen (priority 1)
