@@ -1,5 +1,6 @@
 """
-A modified DiT with DyT for learning energies: the EnerDiT.
+A pure transformer architecture for learning energy based densities
+in context -  the EnerdiT.
 """
 
 import torch
@@ -114,9 +115,9 @@ TODO@DR: determine how to encode the query patch: with the context or not
 """
 
 
-class EnerDiTFinal(nn.Module):
+class EnerdiTFinal(nn.Module):
     def __init__(self):
-        super(EnerDiTFinal, self).__init__()
+        super(EnerdiTFinal, self).__init__()
         pass
 
     def forward(self, x, y):
@@ -156,7 +157,7 @@ class ScoreFinalLayer(nn.Module):
         return x
 
 
-class EnerDiTBlock(nn.Module):
+class EnerdiTBlock(nn.Module):
     """
     no layernorm or adaptvie ones for now.
     dyt
@@ -199,7 +200,7 @@ class EnerDiTBlock(nn.Module):
 
 
 # Taking inspiration from https://github.com/facebookresearch/DiT/blob/main/models.py
-class EnerDiT(nn.Module):
+class EnerdiT(nn.Module):
     """
     assume at this point that the patches are cut up and fused already.
     """
@@ -217,7 +218,7 @@ class EnerDiT(nn.Module):
         depth=1,
         mlp_ratio=4,
     ):
-        super(EnerDiT, self).__init__()
+        super(EnerdiT, self).__init__()
 
         self.DyT = DyTanh((batch, input_dim, context_len))
 
@@ -238,7 +239,7 @@ class EnerDiT(nn.Module):
         # then comes the list of N EnerDiT blocks
 
         self.blocks = nn.ModuleList(
-            [EnerDiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
+            [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
         )
 
         # TODO@DR: Time and space head for now identical but probably
@@ -247,7 +248,7 @@ class EnerDiT(nn.Module):
         self.time_head = ScoreFinalLayer(d_model, input_dim, context_len)
 
         # this should return the energy; use the last token
-        self.final_enerdit_layer = EnerDiTFinal()
+        self.final_enerdit_layer = EnerdiTFinal()
         self.pre_init()
 
     def pre_init(self):
