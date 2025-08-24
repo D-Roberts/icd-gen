@@ -17,7 +17,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
-from energies import *
+from src.dam_energies import *
 from groups_datagen import (
     x_train,
     y_train,
