@@ -24,17 +24,16 @@ class DyTanh(nn.Module):
 
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
-        print("In tanh x shape", x.shape)
-        print("In tanh weight shape ", self.weight.shape)
+        # print("In tanh x shape", x.shape)
+        # print("In tanh weight shape ", self.weight.shape)
 
-        if self.channels_last:
-            x = x * self.weight + self.bias
-        else:
-            x = x * self.weight[:, None, None] + self.bias[:, None, None]
+        # TODO@DR: put the weight and bias back later but need to match the shapes
+
+        # if self.channels_last:
+        #     x = x * self.weight + self.bias
+        # else:
+        #     x = x * self.weight[:, None, None] + self.bias[:, None, None]
         return x
-
-    def extra_repr(self):
-        return f"normalized_shape={self.normalized_shape}, alpha_init_value={self.alpha_init_value}, channels_last={self.channels_last}"
 
 
 # Ad-hoc test
@@ -128,7 +127,7 @@ class EnerDiTFinal(nn.Module):
 
         """
 
-        return 0.5 * torch.inner(x, y)
+        return 0.5 * (x * y).sum(dim=-1)
 
 
 class ScoreFinalLayer(nn.Module):
@@ -136,7 +135,7 @@ class ScoreFinalLayer(nn.Module):
     this is before the Energy final final
     """
 
-    def __init__(self, d_model, input_dim, output_dim, channels, context_len):
+    def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
         self.dyt_final = DyTanh((d_model, context_len))
@@ -146,14 +145,12 @@ class ScoreFinalLayer(nn.Module):
 
         # TODO@DR: also what am I really predicting here? The socre, the energy or the
         # the clean image?
-        self.final_dit_layer = nn.Linear(
-            d_model, input_dim * output_dim * channels, bias=True
-        )
+        self.final_dit_layer = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
         x = torch.permute(x, (0, 2, 1))
         x = self.dyt_final(x)
-        print("shape of x as it comes out of dyt in final layer ", x.shape)
+        # print("shape of x as it comes out of dyt in final layer ", x.shape)
 
         x = self.final_dit_layer(torch.permute(x, (0, 2, 1)))
         return x
@@ -209,19 +206,20 @@ class EnerDiT(nn.Module):
 
     def __init__(
         self,
-        batch=4,
-        context_len=5,
-        d_model=32,
-        input_dim=10,
-        output_dim=10,
-        channels=3,
+        batch,
+        context_len,
+        d_model,
+        # input_dim=10,
+        # output_dim=10,
+        # channels=3,
+        input_dim,  # the way datagen is setup now - comes in one flattened
         num_heads=1,
         depth=1,
         mlp_ratio=4,
     ):
         super(EnerDiT, self).__init__()
 
-        self.DyT = DyTanh((batch, input_dim * output_dim * channels, context_len))
+        self.DyT = DyTanh((batch, input_dim, context_len))
 
         # TODO@DR: note that the DiT pos embeddings are slightly different albeit
         # still sincos; might want to come back to this, it might matter
@@ -229,7 +227,7 @@ class EnerDiT(nn.Module):
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
 
-        self.embedpatch = PatchEmbedding(d_model, input_dim * output_dim * channels)
+        self.embedpatch = PatchEmbedding(d_model, input_dim)
         #
         # self.embedpatch = PatchEmbed(input_dim, input_dim, channels, d_model, bias=True)
         # context_len is num of patches
@@ -243,9 +241,10 @@ class EnerDiT(nn.Module):
             [EnerDiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
         )
 
-        self.final_score_layer = ScoreFinalLayer(
-            d_model, input_dim, output_dim, channels, context_len
-        )
+        # TODO@DR: Time and space head for now identical but probably
+        # should not be
+        self.space_head = ScoreFinalLayer(d_model, input_dim, context_len)
+        self.time_head = ScoreFinalLayer(d_model, input_dim, context_len)
 
         # this should return the energy; use the last token
         self.final_enerdit_layer = EnerDiTFinal()
@@ -258,9 +257,10 @@ class EnerDiT(nn.Module):
         pass
 
     def forward(self, x):
-        b_s, in_d, out_d, c, context_len = x.shape
+        print("what shape comes the batch into Enerdit ", x.shape)
+        b_s, in_d, context_len = x.shape
 
-        x_for_dyt = x.view(b_s, in_d * out_d * c, context_len)
+        x_for_dyt = torch.permute(x, (0, 2, 1))
 
         # print(x_for_dyt.shape)
 
@@ -269,14 +269,14 @@ class EnerDiT(nn.Module):
         # x.retain_grad()  # need a hook
         # print(x.view(b_s, -1).shape)
         # . flaten for embed
-        x = x.view(b_s, in_d * out_d * c, -1)
+
         # print("x shape after Dyt and reshape", x.shape)
 
         # # permute so that (b, context_len, dim)
         # permuted = torch.permute(x, (0, 2, 1))
-        permuted = torch.permute(x, (0, 2, 1))
+        # permuted = torch.permute(x, (0, 2, 1))
         # print("permuted shape", permuted.shape)
-        patch_embed = self.embedpatch(permuted)
+        patch_embed = self.embedpatch(x)
 
         # reshape for patch_embed
         # x = x.view(b_s, in_d, out_d, c, context_len)
@@ -302,65 +302,50 @@ class EnerDiT(nn.Module):
             x = block(x)
 
         # add final (score out layer)
-        score = self.final_score_layer(x)
+        space_score = self.space_head(x)
+        time_score = self.time_head(x)
+
         # add enerditfinal
-        print("score shape ", score.shape)
+        # print("score shape ", score.shape)
 
         # this is for all patches
         # y = x[:,:,:,-1].view()
 
-        print(f"what is out of block shape", score.shape)
-        energy = self.final_enerdit_layer(score, x_for_dyt.view(b_s, context_len, -1))
+        # print(f"what is out of block shape", score.shape) #(b, context_len, in_dim)
+        # print(f"what is the query going into energy layer ", x_for_dyt.shape)
+
+        energy = self.final_enerdit_layer(space_score, x_for_dyt)
 
         # only for last patch the noisy query
-        return energy[:, :, -1]
+        # print("what is out of EnerDiT ", energy.shape)
+        # TODO@DR go back to energies
+
+        # so this will now output the energy for each token with last
+        # one being for query; RIght now train code is setup to
+        # predict the clean image so do that for a first train run
+
+        # return energy[:, :, -1]
+
+        # the code is now setup to return output of attn layer and an
+        # intermediate representation
+        # let's see what's out of DiT Blocks
+
+        # print("shapes of score and x out of enerdit now ", score.shape, x.shape)
+        # it wants context last
+        return energy, space_score, time_score
+        # return torch.permute(score, (0, 2,1)), x #shape of x is (b, context, d_model)
 
 
 # AdHoc testing
-X_train = torch.randn(4, 10, 10, 3, 5, requires_grad=True)  # (B, ,C, context_len)
-model = EnerDiT()
-energy = model(X_train)
-energy.retain_grad()
+# X_train = torch.randn(4, 10, 10, 3, 5, requires_grad=True)  # (B, ,C, context_len)
+# model = EnerDiT()
+# energy = model(X_train)
+# energy.retain_grad()
 
 
-dummy_loss = energy.sum()
-dummy_loss.backward()
+# dummy_loss = energy.sum()
+# dummy_loss.backward()
 # print(energy.grad)
 
-
-class TimeLoss(nn.Module):
-    def __init__(self):
-        super(TimeLoss, self).__init__()
-
-    def forward(self, preds, label):
-        pass
-
-
-class SpaceLoss(nn.Module):
-    def __init__(self):
-        super(SpaceLoss, self).__init__()
-        pass
-
-    def forward(self, preds, labels):
-        pass
-
-
-class Trainer:
-    """
-    To train the EnerDiT
-    """
-
-    def __init__(
-        self,
-    ):
-        pass
-
-    def train(
-        self,
-    ):
-        pass
-
-    def eval(
-        self,
-    ):
-        pass
+# TODO@DR: Reframe it as energy match and not score match (especially if I use
+# a time head and a space head)
