@@ -296,6 +296,7 @@ class EnerdiT(nn.Module):
         )  # [1, 10, 32] will add same order each batch
         # print(f"pos embed shape********* {pos_embed.shape}")
 
+        # TODO@DR - so far
         x = patch_embed + pos_embed
 
         # add enerdit blocks
@@ -317,19 +318,11 @@ class EnerdiT(nn.Module):
 
         energy = self.final_enerdit_layer(space_score, x_for_dyt)
 
-        # only for last patch the noisy query
-        # print("what is out of EnerDiT ", energy.shape)
-        # TODO@DR go back to energies
+        # TODO@DR - reason through context next toward loss
 
         # so this will now output the energy for each token with last
         # one being for query; RIght now train code is setup to
         # predict the clean image so do that for a first train run
-
-        # return energy[:, :, -1]
-
-        # the code is now setup to return output of attn layer and an
-        # intermediate representation
-        # let's see what's out of DiT Blocks
 
         # print("shapes of score and x out of enerdit now ", score.shape, x.shape)
         # it wants context last
@@ -338,8 +331,8 @@ class EnerdiT(nn.Module):
 
 
 # AdHoc testing
-# X_train = torch.randn(4, 10, 10, 3, 5, requires_grad=True)  # (B, ,C, context_len)
-# model = EnerDiT()
+# X_train = torch.randn(4, 100, 3, 5, requires_grad=True)  # (B, ,C, context_len)
+# model = EnerdiT()
 # energy = model(X_train)
 # energy.retain_grad()
 

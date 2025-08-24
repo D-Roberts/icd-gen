@@ -19,7 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 #     test_batched_data,
 # )
 
-from EnerDiT import *
+from EnerdiT import *
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -123,7 +123,7 @@ class Trainer:
 
 trainer = Trainer()
 
-model = EnerDiT(
+model = EnerdiT(
     batch=2,
     context_len=5,
     d_model=32,
@@ -198,6 +198,7 @@ def get_weight_for_patch_loss():
     return weight
 
 
+# Just looking into ideas
 class PatchDiffLoss(nn.Module):
     """Score matching variation
     Based on EDM. Based on "Elucidating ..."
