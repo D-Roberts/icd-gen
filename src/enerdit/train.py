@@ -297,10 +297,12 @@ loss, energy, sh, th = trainer.train_step(
 
 # What would t be for me?
 print(f"loss is {loss}\n")
-print(f"energy {energy}\n")
 
-print(f"space score {sh.shape}\n")
-print(f"time score {th.shape}\n")
+print(f"energy {energy} and shape {energy.shape} \n")
+# yes looks fine shapewise, one energy per batch per context token
+
+print(f"space score shape {sh.shape} and values {sh}\n")
+print(f"time score shape {th.shape} and values {th} \n")
 
 
 # TODO@Note that I could augment the diffusion process with the
@@ -312,7 +314,7 @@ print(f"time score {th.shape}\n")
 # TODO@DR explore the compute graph for shortcuts
 
 # time schedule from DiT
-t = torch.randint(
-    0, 3, (4,)
-)  # gen ints in between 3 and 3 is number of time steps and 4 is batch size
-print("generated time schedule as in dit ", t)  #
+# t = torch.randint(
+#     0, 3, (4,)
+# )  # gen ints in between 3 and 3 is number of time steps and 4 is batch size
+# print("generated time schedule as in dit ", t)  #

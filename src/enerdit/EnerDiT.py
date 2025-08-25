@@ -181,45 +181,42 @@ class FinalLayer(nn.Module):
 
 class TimeHead(nn.Module):
     """
-    just linear for now; might want to add a silu and tanh
-
-    # apply silu with F
+    with a silu and a dyt as in pre-norm but no resid connections
     """
 
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
         self.dyt_time = DyTanh((d_model, context_len))
-
+        self.silu = nn.SiLU()
         self.time_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
         x = torch.permute(x, (0, 2, 1))
         x = self.dyt_time(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        x = F.silu(x)
+        x = self.silu(x)
         x = self.time_head(torch.permute(x, (0, 2, 1)))
         return x
 
 
 class SpaceHead(nn.Module):
     """
-    just linear for now; might want to add a silu and tanh
-
-    # apply silu with F
+    with a silu and a dyt as in pre-norm but no resid connections
     """
 
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
         self.dyt_space = DyTanh((d_model, context_len))
+        self.silu = nn.SiLU()
         self.space_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
         x = torch.permute(x, (0, 2, 1))
         x = self.dyt_space(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        x = F.silu(x)
+        x = self.silu(x)
         x = self.space_head(torch.permute(x, (0, 2, 1)))
         return x
 
@@ -317,8 +314,7 @@ class EnerdiT(nn.Module):
         # correction factor space time scores
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
-        # TODO@DR: Time and space head for now identical but probably
-        # should not be
+
         self.space_head = TimeHead(d_model, input_dim, context_len)
         self.time_head = SpaceHead(d_model, input_dim, context_len)
         self.pre_init()
