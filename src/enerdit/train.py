@@ -96,6 +96,14 @@ class Trainer:
             loss2 = loss_funcs(space_score, xs[:, :, -1], ys, t=t)
             loss += loss2
 
+        # Test an added direct U component to tighten the feedback loop loss-preds (an NLL afterall)
+        # Here adding the average over context but with a hyperparam
+        add_u = True
+        lamu = 0.001
+
+        if add_u:
+            loss += lamu * energy.mean()
+
         # for patch diffusion loss from EDM
         # print(f"shape of score {score.shape} and x {xs.shape}")
         # preds = torch.permute(score, (0, 2,1))
@@ -160,9 +168,6 @@ class TimeLoss(nn.Module):
         dUt = 0.5 * ((self.d_model - torch.norm(y - x, p=2) ** 2)).mean()
 
         # Eq 5: TODO@DR: one mean or two means now?
-        # Also preds are the gradient of energy wrt to t here
-        # So not very sure how this translates to my in-context set up
-        # now
 
         ltsm = ((preds - dUt) ** 2).mean()
         return ltsm

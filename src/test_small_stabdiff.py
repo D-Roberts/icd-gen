@@ -27,10 +27,6 @@ pipe.model = DiTTransformer2DModel.from_config(pipe.transformer.config)
 # config = AutoConfig.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
 print(pipe.model)
 
-# It is likely that replacing the normalization layers with tanh
-# 1. means that some layers will be untrained so a fully pretrained cannot
-# be used
-
 
 # DiTTransformer2DModel(
 #   (pos_embed): PatchEmbed(
