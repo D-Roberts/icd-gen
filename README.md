@@ -3,12 +3,12 @@
 ### TODO@DR running list:
 
 
-    *-1. Code up the in-context energy based density.
+    *-1. Code up the Enerdit: priority 1. 
         - WIP
         - Comet panels will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
                 
 
-    *0. Code for models on the new patch structure datagen (priority 1)
+    *0. Code for models on the new patch structure datagen (priority 2)
 
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
@@ -34,8 +34,8 @@
     *2. there is a bug in the plot loss baselines code [the icd first task]
     *3. there might be a bug in the batch loss calculation and/or plotting [the icd first task]
     *4. likely a bug in the 2-head archi [the icd first task]
-    *6. Refactor archis to implement exactly the archis in the theory section. 
-    *7. Refactor energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
+    *6. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
+    *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
     *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians.
    
     
@@ -84,3 +84,5 @@ Initial code references:
 * https://github.com/LabForComputationalVision/memorization_generalization_in_diffusion_models/tree/main
 * VIT learn spatial struct https://proceedings.neurips.cc/paper_files/paper/2022/hash/f69707de866eb0805683d3521756b73f-Abstract-Conference.html
 * https://github.com/facebookresearch/DiT/blob/main/models.py
+* https://github.com/Zhendong-Wang/Patch-Diffusion/blob/main/training/augment.py
+* https://github.com/yang-song/score_sde/blob/main/losses.py
