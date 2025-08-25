@@ -5,7 +5,7 @@
 
     *-1. Code up the Enerdit: priority 1. 
         - WIP
-        - Comet panels will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
+        - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
                 
 
     *0. Code for models on the new patch structure datagen (priority 2)
@@ -36,7 +36,7 @@
     *4. likely a bug in the 2-head archi [the icd first task]
     *6. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
     *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
-    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians.
+    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians(torch jacrev) if I need them.
    
     
 

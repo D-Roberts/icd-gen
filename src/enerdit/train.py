@@ -77,32 +77,37 @@ class Trainer:
     ):
         pass
 
-    def train_step(self, model, xs, ys, optimizer, loss_funct, loss_funcs, t=1):
+    def train_step(
+        self, model, xs, ys, optimizer, loss_funct, loss_funcs, t=1, lamu=0.001
+    ):
         optimizer.zero_grad()
-        energy, space_score, time_score = model(xs)
-        qenergy = energy[:, -1]
 
-        # TODO@DR it isn't the energy that should go in loss but I want it for density and analysis
+        ############################################Losses - TODO@DR - should
+        ########factor out / separate into its own Loss class
+
+        energy, space_score, time_score = model(xs)
+
+        # query energy
+        qenergy = energy[:, -1]
 
         # print("in train step device of xs ys", xs.device, ys.device)
 
         loss = 0
-        # for TimeLoss func
+
+        # this is th portion
         if loss_funct:  # so calculating this on the query and its label
             loss1 = loss_funct(time_score, xs[:, :, -1], ys, t=t)
             loss += loss1
 
+        # this is sh portion
         if loss_funcs:
             loss2 = loss_funcs(space_score, xs[:, :, -1], ys, t=t)
             loss += loss2
 
         # Test an added direct U component to tighten the feedback loop loss-preds (an NLL afterall)
         # Here adding the average over context but with a hyperparam
-        add_u = True
-        lamu = 0.001
 
-        if add_u:
-            loss += lamu * energy.mean()
+        loss += lamu * energy.mean()
 
         # for patch diffusion loss from EDM
         # print(f"shape of score {score.shape} and x {xs.shape}")
@@ -114,8 +119,9 @@ class Trainer:
 
         return (
             loss.detach().item(),
-            qenergy.detach(),
+            energy.detach(),  # take out the energy for the context to analyze
             space_score.detach(),
+            time_score.detach(),
         )
 
     def train(
@@ -138,13 +144,14 @@ model = EnerdiT(
     context_len=5,
     d_model=32,
     input_dim=8,
+    cf1_init_value=0.5,  # This is just to init - but param is learned.
     num_heads=1,
     depth=1,
     mlp_ratio=4,
 )
 
 xs = torch.randn(2, 8, 5, requires_grad=True)
-ys = torch.randn(2, 1, requires_grad=True)  # mimic energy
+ys = torch.randn(2, 1, requires_grad=True)
 
 
 # page 4
@@ -193,6 +200,7 @@ class SpaceLoss(nn.Module):
         return ldsm
 
 
+##########################This is from patch diffusion / EDM
 def get_weight_for_patch_loss():
     P_mean = -1.2
     P_std = 1.2
@@ -272,28 +280,32 @@ optimizer = torch.optim.AdamW(
 loss_funct = TimeLoss(d_model=32)
 loss_funcs = SpaceLoss()
 
-# from patch diffusion
-patchd_loss = PatchDiffLoss()
-xs = get_noised_forpatchdiff(xs)
+# from patch diffusion; not used
+# patchd_loss = PatchDiffLoss()
+# xs = get_noised_forpatchdiff(xs)
 
 print(xs.shape)
 
+print(model)
+
+lamu = 0.001  # this is hyperpar for U regularizer
 
 # Pass None if only one component of the loss is used
-loss, output, score = trainer.train_step(
-    model, xs, ys, optimizer, loss_funct, loss_funcs, t=1
+loss, energy, sh, th = trainer.train_step(
+    model, xs, ys, optimizer, loss_funct, loss_funcs, t=1, lamu=lamu
 )
 
 # What would t be for me?
 print(f"loss is {loss}\n")
-print(f"output {output}\n")
+print(f"energy {energy}\n")
 
-print(f"intermed {score.shape}\n")
+print(f"space score {sh.shape}\n")
+print(f"time score {th.shape}\n")
 
 
 # TODO@Note that I could augment the diffusion process with the
 # context for some time steps and then let a few time steps
-# in a sort of multitask learning fashion.
+# in a sort of multitask learning fashion. Not sure, we'll see.
 
 # TODO@ recall torch.bmm might be faster if I need a matmul
 

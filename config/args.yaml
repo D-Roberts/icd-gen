@@ -52,6 +52,9 @@ grouped_patches:
 
 
 training:
+
+    Enerdit:
+        lamu: 0.001
     batch_level_partitions: True
     num_train_batches: 
     num_test_batches:

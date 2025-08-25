@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+import torch.nn.functional as F
 
 
 # As in Transformers without normalization
@@ -102,7 +103,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
 
 """
-will start with the EnerDiT archi and then build buildinblocks.
+will start with the EnerdiT archi and then build buildinblocks.
 
 This will not be a state of the art scale.
 
@@ -120,24 +121,37 @@ class EnerdiTFinal(nn.Module):
         super(EnerdiTFinal, self).__init__()
         pass
 
-    def forward(self, x, y):
-        """return energy from score and query patch, which is last patch
-        x here will be the output of the previous layer and
-        y would be the noisy query (already extracted from sequence)
+    def forward(self, sh, th, y, cf1):
+        """return energy for each token in context as well as
+        query token (last) TODO@DR reason about the zero padding
 
+        use the corrected s in U = 0.5<s, y>
 
+        cf1 is a correction factor. SHould be the ratio of
+        eps y and eps t which should give sensitivity of
+        the true score net to y and t. Let's assume small numbers
+
+        and take cf1 as hyperparameter
+
+        there was a cf2 correction factor as well but let's
+        ignore it for now
+
+        return : energy for each token in context and the query token
         """
 
-        return 0.5 * (x * y).sum(dim=-1)
+        # TODO @DR: Should cf1 be analytically estimated / approx
+        # a hyperparam or learned in here jointly?
+
+        sc = sh - th * cf1
+
+        # TODO@DR: check that energy is calc on the right dims
+        energy = 0.5 * torch.sum(sc * y, dim=(-1))
+        return energy
 
 
-# TODO@DR: I need one other layer I think for Time and Space
-# heads
-
-
-class ScoreFinalLayer(nn.Module):
+class FinalLayer(nn.Module):
     """
-    this is before the Energy final final
+    this is before the two heads
     """
 
     def __init__(self, d_model, input_dim, context_len):
@@ -148,10 +162,9 @@ class ScoreFinalLayer(nn.Module):
         # TODO@DR: not sure yet about the modulation.
         # TODO: @DR a potential differentiable one.
 
-        # TODO@DR: also what am I really predicting here? The socre, the energy or the
-        # the clean image?
+        # TODO@DR: COnsider adding a Silu here also
 
-        self.final_dit_layer = nn.Linear(d_model, input_dim, bias=True)
+        self.final_dit_layer = nn.Linear(d_model, input_dim, bias=False)
 
     def forward(self, x):
         x = torch.permute(x, (0, 2, 1))
@@ -159,6 +172,55 @@ class ScoreFinalLayer(nn.Module):
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
 
         x = self.final_dit_layer(torch.permute(x, (0, 2, 1)))
+        return x
+
+
+# TODO@DR: I'll just do them separatelly and will see what if
+# anything different in each
+
+
+class TimeHead(nn.Module):
+    """
+    just linear for now; might want to add a silu and tanh
+
+    # apply silu with F
+    """
+
+    def __init__(self, d_model, input_dim, context_len):
+        super().__init__()
+
+        self.dyt_time = DyTanh((d_model, context_len))
+
+        self.time_head = nn.Linear(d_model, input_dim, bias=True)
+
+    def forward(self, x):
+        x = torch.permute(x, (0, 2, 1))
+        x = self.dyt_time(x)
+        # print("shape of x as it comes out of dyt in final layer ", x.shape)
+        x = F.silu(x)
+        x = self.time_head(torch.permute(x, (0, 2, 1)))
+        return x
+
+
+class SpaceHead(nn.Module):
+    """
+    just linear for now; might want to add a silu and tanh
+
+    # apply silu with F
+    """
+
+    def __init__(self, d_model, input_dim, context_len):
+        super().__init__()
+
+        self.dyt_space = DyTanh((d_model, context_len))
+        self.space_head = nn.Linear(d_model, input_dim, bias=True)
+
+    def forward(self, x):
+        x = torch.permute(x, (0, 2, 1))
+        x = self.dyt_space(x)
+        # print("shape of x as it comes out of dyt in final layer ", x.shape)
+        x = F.silu(x)
+        x = self.space_head(torch.permute(x, (0, 2, 1)))
         return x
 
 
@@ -219,6 +281,7 @@ class EnerdiT(nn.Module):
         # output_dim=10,
         # channels=3,
         input_dim,  # the way datagen is setup now - comes in one flattened
+        cf1_init_value=0.1,
         num_heads=1,
         depth=1,
         mlp_ratio=4,
@@ -239,21 +302,25 @@ class EnerdiT(nn.Module):
         # context_len is num of patches
         self.pos_embed = SinusoidalPositionalEmbedding(d_model, context_len)
 
+        ######################################Before this - inputs embedding
+
         # TODO@DR: see about the time embedder
 
-        # then comes the list of N EnerDiT blocks
+        # then comes the list of N EnerdiT blocks
+
+        # TODO@DR consider a Silu and DyT here maybe - silu were working so well - check that diff
 
         self.blocks = nn.ModuleList(
             [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
         )
 
+        # correction factor space time scores
+        self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
+        self.final_enerdit_layer = EnerdiTFinal()
         # TODO@DR: Time and space head for now identical but probably
         # should not be
-        self.space_head = ScoreFinalLayer(d_model, input_dim, context_len)
-        self.time_head = ScoreFinalLayer(d_model, input_dim, context_len)
-
-        # this should return the energy; use the last token
-        self.final_enerdit_layer = EnerdiTFinal()
+        self.space_head = TimeHead(d_model, input_dim, context_len)
+        self.time_head = SpaceHead(d_model, input_dim, context_len)
         self.pre_init()
 
     def pre_init(self):
@@ -321,7 +388,11 @@ class EnerdiT(nn.Module):
         # print(f"what is out of block shape", score.shape) #(b, context_len, in_dim)
         # print(f"what is the query going into energy layer ", x_for_dyt.shape)
 
-        energy = self.final_enerdit_layer(space_score, x_for_dyt)
+        # sh, th, y, cf1 TODO@DR. Not sure what value for cf1
+        # I'll just learn one
+        # y is the noised
+        energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
+        print(f"what is {self.corf}")
 
         # TODO@DR - reason through context next toward loss
 
@@ -329,8 +400,6 @@ class EnerdiT(nn.Module):
         # one being for query; RIght now train code is setup to
         # predict the clean image so do that for a first train run
 
-        # print("shapes of score and x out of enerdit now ", score.shape, x.shape)
-        # it wants context last
         return energy, space_score, time_score
         # return torch.permute(score, (0, 2,1)), x #shape of x is (b, context, d_model)
 
@@ -345,6 +414,3 @@ class EnerdiT(nn.Module):
 # dummy_loss = energy.sum()
 # dummy_loss.backward()
 # print(energy.grad)
-
-# TODO@DR: Reframe it as energy match and not score match (especially if I use
-# a time head and a space head)
