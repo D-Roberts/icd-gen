@@ -118,3 +118,68 @@ print(f"poc SURE loss is {sloss}")
 # patchwise sums - CLT
 
 # TODO@DR - now with Gamma consider MAE, Jensen-SH, or GMMAD (median based) losses
+
+
+##########################This is from patch diffusion / EDM ####
+def get_weight_for_patch_loss():
+    P_mean = -1.2
+    P_std = 1.2
+    sigma_data = 0.5
+
+    rnd_normal = torch.randn([x.shape[0], 1, 1])
+    sigma = (rnd_normal * P_std + P_mean).exp()
+    weight = (sigma**2 + sigma_data**2) / (sigma * sigma_data)
+
+    return weight
+
+
+# Just looking into ideas
+class PatchDiffLoss(nn.Module):
+    """Score matching variation
+    Based on EDM. Based on "Elucidating ..."
+    """
+
+    def __init__(self):
+        super(PatchDiffLoss, self).__init__()
+        pass
+
+    def forward(
+        self, preds, x, labels=None, augment=None, t=1
+    ):  # in patch diffusion y is confusingly the clean image, n is noise and y is label
+        """
+        from PatchDiffusion - simplified
+        In patch diff they have the option for these cool geometric augmentations
+
+        t is not needed in this model the noise is given as seen with the sigmas
+        """
+
+        # print(f"what is shape of weight {weight.shape}")
+        # print(f"what is shape of x {x.shape}")
+        # print(f"what is shape of preds {preds.shape}")
+
+        weight = get_weight_for_patch_loss()
+
+        ploss = weight * ((preds - x) ** 2)  # preds will be made on y + n
+
+        return ploss.mean()
+
+
+def get_noised_forpatchdiff(x):
+    """x are images
+    the sigma is the same as in the patchdiff loss
+    This noise gets added to clean and goes into the net.
+    In patchdiff - there are some additional c conditionings
+    and skip added to the Unet output there
+    """
+
+    P_mean = -1.2
+    P_std = 1.2
+    sigma_data = 0.5
+
+    rnd_normal = torch.randn([x.shape[0], 1, 1])
+
+    sigma = (rnd_normal * P_std + P_mean).exp()
+    n = torch.rand_like(x) * sigma
+    # print(f"shape of n {n.shape} and of sigma {sigma.shape}")
+
+    return x + n

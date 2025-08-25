@@ -9,15 +9,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-# from groups_datagen import (
-#     x_train,
-#     y_train,
-#     x_test,
-#     y_test,
-#     PreBatchedDataset,
-#     train_batched_data,
-#     test_batched_data,
-# )
+from datagen import (
+    PreBatchedDataset,
+    train_batched_data,
+    test_batched_data,
+)
 
 from EnerdiT import *
 
@@ -137,21 +133,21 @@ class Trainer:
 
 # Ad hoc test
 
-trainer = Trainer()
+# trainer = Trainer()
 
-model = EnerdiT(
-    batch=2,
-    context_len=5,
-    d_model=32,
-    input_dim=8,
-    cf1_init_value=0.5,  # This is just to init - but param is learned.
-    num_heads=1,
-    depth=1,
-    mlp_ratio=4,
-)
+# model = EnerdiT(
+#     batch=2,
+#     context_len=5,
+#     d_model=32,
+#     input_dim=8,
+#     cf1_init_value=0.5,  # This is just to init - but param is learned.
+#     num_heads=1,
+#     depth=1,
+#     mlp_ratio=4,
+# )
 
-xs = torch.randn(2, 8, 5, requires_grad=True)
-ys = torch.randn(2, 1, requires_grad=True)
+# xs = torch.randn(2, 8, 5, requires_grad=True)
+# ys = torch.randn(2, 1, requires_grad=True)
 
 
 # page 4
@@ -200,70 +196,18 @@ class SpaceLoss(nn.Module):
         return ldsm
 
 
-##########################This is from patch diffusion / EDM
-def get_weight_for_patch_loss():
-    P_mean = -1.2
-    P_std = 1.2
-    sigma_data = 0.5
+trainer = Trainer()
 
-    rnd_normal = torch.randn([x.shape[0], 1, 1])
-    sigma = (rnd_normal * P_std + P_mean).exp()
-    weight = (sigma**2 + sigma_data**2) / (sigma * sigma_data)
-
-    return weight
-
-
-# Just looking into ideas
-class PatchDiffLoss(nn.Module):
-    """Score matching variation
-    Based on EDM. Based on "Elucidating ..."
-    """
-
-    def __init__(self):
-        super(PatchDiffLoss, self).__init__()
-        pass
-
-    def forward(
-        self, preds, x, labels=None, augment=None, t=1
-    ):  # in patch diffusion y is confusingly the clean image, n is noise and y is label
-        """
-        from PatchDiffusion - simplified
-        In patch diff they have the option for these cool geometric augmentations
-
-        t is not needed in this model the noise is given as seen with the sigmas
-        """
-
-        # print(f"what is shape of weight {weight.shape}")
-        # print(f"what is shape of x {x.shape}")
-        # print(f"what is shape of preds {preds.shape}")
-
-        weight = get_weight_for_patch_loss()
-
-        ploss = weight * ((preds - x) ** 2)  # preds will be made on y + n
-
-        return ploss.mean()
-
-
-def get_noised_forpatchdiff(x):
-    """x are images
-    the sigma is the same as in the patchdiff loss
-    This noise gets added to clean and goes into the net.
-    In patchdiff - there are some additional c conditionings
-    and skip added to the Unet output there
-    """
-
-    P_mean = -1.2
-    P_std = 1.2
-    sigma_data = 0.5
-
-    rnd_normal = torch.randn([x.shape[0], 1, 1])
-
-    sigma = (rnd_normal * P_std + P_mean).exp()
-    n = torch.rand_like(x) * sigma
-    # print(f"shape of n {n.shape} and of sigma {sigma.shape}")
-
-    return x + n
-
+model = EnerdiT(
+    batch=4,
+    context_len=10,
+    d_model=32,
+    input_dim=200,
+    cf1_init_value=0.5,  # This is just to init - but param is learned.
+    num_heads=1,
+    depth=1,
+    mlp_ratio=4,
+)
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
@@ -284,25 +228,9 @@ loss_funcs = SpaceLoss()
 # patchd_loss = PatchDiffLoss()
 # xs = get_noised_forpatchdiff(xs)
 
-print(xs.shape)
+# print(xs.shape)
 
-print(model)
-
-lamu = 0.001  # this is hyperpar for U regularizer
-
-# Pass None if only one component of the loss is used
-loss, energy, sh, th = trainer.train_step(
-    model, xs, ys, optimizer, loss_funct, loss_funcs, t=1, lamu=lamu
-)
-
-# What would t be for me?
-print(f"loss is {loss}\n")
-
-print(f"energy {energy} and shape {energy.shape} \n")
-# yes looks fine shapewise, one energy per batch per context token
-
-print(f"space score shape {sh.shape} and values {sh}\n")
-print(f"time score shape {th.shape} and values {th} \n")
+# print(model)
 
 
 # TODO@Note that I could augment the diffusion process with the
@@ -318,3 +246,45 @@ print(f"time score shape {th.shape} and values {th} \n")
 #     0, 3, (4,)
 # )  # gen ints in between 3 and 3 is number of time steps and 4 is batch size
 # print("generated time schedule as in dit ", t)  #
+
+###############################Now Train with some synthetic batches generated
+###with one structure per batch
+
+# Custom batches with the structure per batch already batched
+train_set = PreBatchedDataset(train_batched_data)
+test_set = PreBatchedDataset(test_batched_data)
+
+train_size = len(train_batched_data)
+train_loader = DataLoader(
+    train_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
+)
+
+test_loader = DataLoader(
+    test_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
+)
+
+###########################POC train on the synthetic batches as they are right now
+epochs = 3
+# batchsize is set in datagen for this synthetic batch group structure setup
+lamu = 0.001  # this is hyperpar for U regularizer
+
+for epoch in range(epochs):
+    for i, data in enumerate(train_loader, 0):
+        inputs, target = data
+
+        print(f"inputs {inputs.shape} and targets {target.shape}")
+        # (4, 200, 10)
+
+        # Pass None if only one component of the loss is used
+        loss, energy, sh, th = trainer.train_step(
+            model, inputs, target, optimizer, loss_funct, loss_funcs, t=1, lamu=lamu
+        )
+
+        # What would t be for me?
+        print(f"loss is {loss}\n")
+
+        # print(f"energy {energy} and shape {energy.shape} \n")
+        # # yes looks fine shapewise, one energy per batch per context token
+
+        # print(f"space score shape {sh.shape} and values {sh}\n")
+        # print(f"time score shape {th.shape} and values {th} \n")

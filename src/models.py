@@ -161,7 +161,7 @@ class TransformerModelV2(nn.Module):
         # print(xs.shape) #[80, 200, 10] fused patch dim is 200
         batchsz, n_dim, n_tokens = xs.size()
 
-        # embed
+        # embed TODO@DR: debug this embedding
         permuted = torch.permute(xs, (0, 2, 1))
         patch_embed = self.embedpatch(permuted)
         # print(f"embed shape********* {patch_embed.shape}")

@@ -68,6 +68,8 @@ class PatchEmbedding(nn.Module):
         self.projection = torch.nn.Linear(dim_in, embed_dim, bias=False)
 
     def forward(self, x):
+        # print(f"layer in patch embed {self.projection}")
+        # print(f"debug patch embed shapes {x.shape}")
         x = self.projection(x)
         # (batch_size, embed_dim, num_patches)
         return x
@@ -103,16 +105,13 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
 
 """
-will start with the EnerdiT archi and then build buildinblocks.
+EnerdiT archi and buildinblocks.
 
-This will not be a state of the art scale.
+This will not be a state of the art scale bc of low on time.
 
 I will then have to find ways to train it faster and with 
-less compute / one GPU.
+less compute / one GPU bc of low on time to deadline.
 
-Start very simple and build up.
-
-TODO@DR: determine how to encode the query patch: with the context or not
 """
 
 
@@ -293,7 +292,9 @@ class EnerdiT(nn.Module):
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
 
-        self.embedpatch = PatchEmbedding(d_model, input_dim)
+        self.patch_embed = PatchEmbedding(d_model, input_dim)
+
+        print(f"patch embed layer in EnerdiT {self.patch_embed}")
         #
         # self.embedpatch = PatchEmbed(input_dim, input_dim, channels, d_model, bias=True)
         # context_len is num of patches
@@ -317,16 +318,17 @@ class EnerdiT(nn.Module):
 
         self.space_head = TimeHead(d_model, input_dim, context_len)
         self.time_head = SpaceHead(d_model, input_dim, context_len)
+
         self.pre_init()
 
     def pre_init(self):
-        """will init weights here and w whatever else I
+        """will init weights here however way I want and whatever else I
         want to init
         """
         pass
 
     def forward(self, x):
-        print("what shape comes the batch into Enerdit ", x.shape)
+        # print("what shape comes the batch into Enerdit ", x.shape)
         b_s, in_d, context_len = x.shape
 
         x_for_dyt = torch.permute(x, (0, 2, 1))
@@ -336,16 +338,14 @@ class EnerdiT(nn.Module):
         x = self.DyT(x_for_dyt)
 
         # x.retain_grad()  # need a hook
-        # print(x.view(b_s, -1).shape)
-        # . flaten for embed
-
-        # print("x shape after Dyt and reshape", x.shape)
+        print("x shape after Dyt and reshape", x.shape)
+        # (b, context, dim)
 
         # # permute so that (b, context_len, dim)
         # permuted = torch.permute(x, (0, 2, 1))
-        # permuted = torch.permute(x, (0, 2, 1))
         # print("permuted shape", permuted.shape)
-        patch_embed = self.embedpatch(x)
+
+        patch_embed = self.patch_embed(x)
 
         # reshape for patch_embed
         # x = x.view(b_s, in_d, out_d, c, context_len)
