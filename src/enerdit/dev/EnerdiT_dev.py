@@ -108,7 +108,7 @@ class EnerdiTFinal(nn.Module):
         eps y and eps t which should give sensitivity of
         the true score net to y and t. Let's assume small numbers
 
-        and take cf1 as hyperparameter
+        and take cf1 as another learned param
 
         there was a cf2 correction factor as well but let's
         ignore it for now
@@ -116,10 +116,7 @@ class EnerdiTFinal(nn.Module):
         return : energy for each token in context and the query token
         """
 
-        # TODO @DR: Should cf1 be analytically estimated / approx
-        # a hyperparam or learned in here jointly?
-
-        # TODO@DR: will have to see about shapes
+        # TODO@DR: will have to see about shapes and signs
         sc = sh - th * cf1
 
         # TODO@DR: check that energy is calc on the right dims
@@ -210,11 +207,13 @@ class EnerdiTBlock(nn.Module):
         super().__init__()
 
         # TODO@DR: will have to check on all the logic of where dyt gets applyied
-        self.dyt1 = DyTanh((d_model, context_len))
+        self.dyt1 = DyTanh((context_len, d_model))
+
         self.attn = Attention(
             d_model, num_heads, qkv_bias=True
         )  # TODO@DR there are some kwargs here will have to check them out
-        self.dyt2 = DyTanh((d_model, context_len))
+
+        self.dyt2 = DyTanh((context_len, d_model))
 
         mlp_hidden_dim = int(0.4 * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
@@ -229,15 +228,9 @@ class EnerdiTBlock(nn.Module):
         # work with HF
 
     def forward(self, x):
-        # not modulating for now
-        x = torch.permute(x, (0, 2, 1))
-        # print(f"shape of x in enerditblock after reshape", x.shape) # B, d_model, context_len
         x = self.dyt1(x)
-        x = torch.permute(x, (0, 2, 1))  # for attn
         x = x + self.attn(x)
-        x = torch.permute(x, (0, 2, 1))  # for dyt TODO@DR: refactor DyT layer
         x = self.dyt2(x)
-        x = torch.permute(x, (0, 2, 1))  # for mlp
         x = x + self.mlp(x)
         return x
 
@@ -250,10 +243,9 @@ class EnerdiT(nn.Module):
 
     def __init__(
         self,
-        batch,  # TODO@DR: why do I have batch in here?
         context_len,
         d_model,
-        # input_dim=10,
+        # input_dim=10, # right now the patches come in flattened from datagen
         # output_dim=10,
         # channels=3,
         input_dim,  # the way datagen is setup now - comes in one flattened
@@ -275,13 +267,13 @@ class EnerdiT(nn.Module):
 
         # TODO@DR: see about the time embedder
 
-        # TODO@DR consider a Silu and DyT here maybe as well
+        # TODO@DR consider a Silu and DyT here maybe as well; though right now the block starts
+        # with dyt
 
         # then comes the list of N EnerdiT blocks
-
-        # self.blocks = nn.ModuleList(
-        #     [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
-        # )
+        self.blocks = nn.ModuleList(
+            [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
+        )
 
         # # correction factor space time scores
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
@@ -292,7 +284,8 @@ class EnerdiT(nn.Module):
         # a kind of unembed
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)
-        # self.pre_init() #TODO@DR handle init later after model dev /  clearly learns
+
+        # self.pre_init() #TODO@DR see later about custom init - right now is hurting
 
     def pre_init(self):
         """will init weights here however way I want and whatever else I
@@ -306,7 +299,7 @@ class EnerdiT(nn.Module):
         def lin_init(module):
             if isinstance(module, nn.Linear):
                 # TODO@DR: reconsider later: not learning well with this below at this time in dev
-                # nn.init.xavier_uniform_(module.weight)
+                nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
 
@@ -330,8 +323,6 @@ class EnerdiT(nn.Module):
         # reshape for embedding and dyt
         # B, seq_len, fused patch dim
         x_for_dyt = torch.permute(x, (0, 2, 1))
-
-        # print(x_for_dyt.shape)
         x = self.DyT(x_for_dyt)
 
         # print("x shape after Dyt and reshape", x.shape)
@@ -347,8 +338,8 @@ class EnerdiT(nn.Module):
         ##################Input normalization and embedding area over
 
         # add enerdit blocks
-        # for block in self.blocks:
-        #     x = block(x)
+        for block in self.blocks:
+            x = block(x)
 
         x = self.prehead_linear(x)
         space_score = self.space_head(x)
@@ -357,12 +348,6 @@ class EnerdiT(nn.Module):
 
         # TODO@DR: what shapes should the scores be? Well this will
         # be determined in the loss###########################
-
-        # add enerditfinal
-        # print("score shape ", score.shape)
-
-        # print(f"what is out of block shape", score.shape) #(b, context_len, in_dim)
-        # print(f"what is the query going into energy layer ", x_for_dyt.shape)
 
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens

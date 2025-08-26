@@ -120,7 +120,6 @@ trainer = Trainer()
 
 
 model = EnerdiT(
-    batch=3,
     context_len=8,
     d_model=4,
     input_dim=128,
@@ -145,7 +144,7 @@ loss_func_dev = nn.L1Loss()
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 30
+epochs = 100
 
 print(model)
 model.to(device)
