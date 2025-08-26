@@ -76,28 +76,26 @@ class PatchEmbedding(nn.Module):
 # TODO@DR: recall that I had an issue with the DiT/SiT Sin Pos Embed-
 # double check what that was about. Also recall not in HF.
 class SinusoidalPositionalEmbedding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
+    def __init__(self, d_model, max_len=200):
         super().__init__()
-        # TODO@DR check for correctness again
-        pe = torch.zeros(max_len, d_model)
+        pe = torch.zeros(max_len, d_model)  # (seq_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
-        )
-        # print("torch.sin(position * div_term)", torch.sin(position * div_term).shape)
-        # print("pe[:, 0::2]", pe[:, 0::2].shape)
-        # print("pe[:, 1::2]", pe[:, 1::2].shape)
+        )  # double the d_model size
 
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-
-        # print("pe shape", pe.shape)
+        pe[:, 0::2] = torch.sin(
+            position * div_term
+        )  # start index at 0 with step size 2
+        # print("pe[:, 0::2] and pe", pe[:, 0::2].shape, pe)
+        pe[:, 1::2] = torch.cos(
+            position * div_term
+        )  # start index at 1 with step size 2
         self.register_buffer("pe", pe.unsqueeze(0))  # Add a batch dimension
 
     def forward(self, x):
         # x is the sequence of patch embeddings, shape (batch_size, seq_len, d_model)
         # We need to add positional embeddings to each element in the sequence
-        # for the moment only create the pos embeddings
 
         return self.pe[:, : x.size(1)]
 
@@ -314,8 +312,9 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        # self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
+        self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
 
+        # a kind of unembed
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)
 
@@ -324,40 +323,22 @@ class EnerdiT(nn.Module):
         b_s, in_d, context_len = x.shape
         # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
-        # x_for_dyt = torch.permute(x, (0, 2, 1))
+        # reshape for embedding and dyt
+        # B, seq_len, fused patch dim
+        x_for_dyt = torch.permute(x, (0, 2, 1))
 
         # print(x_for_dyt.shape)
-
         # x = self.DyT(x_for_dyt)
 
-        # x.retain_grad()  # need a hook
         # print("x shape after Dyt and reshape", x.shape)
         # (b, context, dim)
 
-        # # permute so that (b, context_len, dim)
-        # permuted = torch.permute(x, (0, 2, 1))
-        # print("permuted shape", permuted.shape)
-
-        patch_embed = self.patch_embed(x)
-
-        # reshape for patch_embed
-        # x = x.view(b_s, in_d, out_d, c, context_len)
-        # TODO@DR: this won't work because I have H different from W
-        # x = torch.permute(x, (0, 3, 1, 2, 4))
-        # print("x shape", x.shape)
-
-        # patch_embed = self.embedpatch(x)
-
-        # TODO@DR this isn't working well here on shapes fix
-        # patch_embed = self.embedpatch(x.view(b_s, c, 250, -1))
-        # print("patch_embed pos ", patch_embed.shape)
+        patch_embed = self.patch_embed(x_for_dyt)
 
         pos_embed = self.pos_embed(
             patch_embed
-        )  # [1, 10, 32] will add same order each batch
-        # print(f"pos embed shape********* {pos_embed.shape}")
+        )  # [1, seq_len, d_model] will add same order each instance in batch
 
-        # TODO@DR - so far
         x = patch_embed + pos_embed
 
         # add enerdit blocks
@@ -367,10 +348,20 @@ class EnerdiT(nn.Module):
         # add final (score out layer)
         # TODO@DR: there should be another linear here with DyT and silu
 
-        # x = self.prehead_linear(x)
+        x = self.prehead_linear(x)
+
+        print(f"x is now {x.shape}")  # x is now torch.Size([3, 8, 4])
+        # so B, seq_len, d_model
 
         space_score = self.space_head(x)
-        time_score = self.time_head(x)
+        print(
+            f"sh is now {space_score.shape}"
+        )  # [3, 8, 128] like B, seq_len, patch dim which is expected
+        time_score = self.time_head(x)  # the time head is the same shape now
+        print(f"th is now {time_score.shape}")
+
+        # TODO@DR: what shapes should the scores be? Well this will
+        # be determined in the loss###########################
 
         # add enerditfinal
         # print("score shape ", score.shape)
@@ -379,15 +370,11 @@ class EnerdiT(nn.Module):
         # print(f"what is the query going into energy layer ", x_for_dyt.shape)
 
         # sh, th, y, cf1 - learn it
-        # y is the noised
-        energy = self.final_enerdit_layer(space_score, time_score, x, self.corf)
+        # y is the noised in theory but here is called x, the noised query and context tokens
+        energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
         # print(f"what is {self.corf}")
 
         # TODO@DR - reason through context next toward loss
-
-        # so this will now output the energy for each token with last
-        # one being for query; RIght now train code is setup to
-        # predict the clean image so do that for a first train run
 
         return energy, space_score, time_score
 

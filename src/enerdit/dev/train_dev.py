@@ -120,7 +120,7 @@ trainer = Trainer()
 
 
 model = EnerdiT(
-    batch=4,
+    batch=3,
     context_len=8,
     d_model=4,
     input_dim=128,

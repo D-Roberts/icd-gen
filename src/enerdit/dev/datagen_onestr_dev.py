@@ -345,7 +345,7 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 
 # print(x_train.shape)
 # print(y_train.shape)
-batch_size = 4
+batch_size = 3
 
 train_size = x_train.shape[0]
 # print(f"For dev: train_size {train_size} and test size {x_test.shape[0]} and xtrain shape {x_train.shape}")
