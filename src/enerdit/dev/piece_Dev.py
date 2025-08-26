@@ -124,12 +124,12 @@ class DyTanh(nn.Module):
 
         self.alpha = nn.Parameter(torch.ones(1) * alpha_init_value)
         self.weight = nn.Parameter(torch.ones(shape_in))
-        print("tanh weight shape", self.weight.shape)
+        # print("tanh weight shape", self.weight.shape)
         self.bias = nn.Parameter(torch.zeros(shape_in))
 
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
-        print("In tanh x shape", x.shape)
+        # print("In tanh x shape", x.shape)
         x = x * self.weight + self.bias
         return x
 

@@ -250,7 +250,7 @@ class EnerdiT(nn.Module):
 
     def __init__(
         self,
-        batch,
+        batch,  # TODO@DR: why do I have batch in here?
         context_len,
         d_model,
         # input_dim=10,
@@ -264,29 +264,20 @@ class EnerdiT(nn.Module):
     ):
         super(EnerdiT, self).__init__()
 
-        # self.DyT = DyTanh((batch, input_dim, context_len))
-
-        # TODO@DR: note that the DiT pos embeddings are slightly different albeit
-        # still sincos; might want to come back to this, it might matter
+        self.DyT = DyTanh((context_len, input_dim))
 
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
-
         self.patch_embed = PatchEmbedding(input_dim, d_model)
-
-        # print(f"patch embed layer in EnerdiT {self.patch_embed}")
-        #
-        # self.embedpatch = PatchEmbed(input_dim, input_dim, channels, d_model, bias=True)
-        # context_len is num of patches
         self.pos_embed = SinusoidalPositionalEmbedding(d_model, context_len)
 
         ######################################Before this - inputs embedding
 
         # TODO@DR: see about the time embedder
 
-        # then comes the list of N EnerdiT blocks
+        # TODO@DR consider a Silu and DyT here maybe as well
 
-        # TODO@DR consider a Silu and DyT here maybe - silu were working so well - check that diff
+        # then comes the list of N EnerdiT blocks
 
         # self.blocks = nn.ModuleList(
         #     [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
@@ -341,35 +332,26 @@ class EnerdiT(nn.Module):
         x_for_dyt = torch.permute(x, (0, 2, 1))
 
         # print(x_for_dyt.shape)
-        # x = self.DyT(x_for_dyt)
+        x = self.DyT(x_for_dyt)
 
         # print("x shape after Dyt and reshape", x.shape)
         # (b, context, dim)
 
-        patch_embed = self.patch_embed(x_for_dyt)
-
+        patch_embed = self.patch_embed(x)
         pos_embed = self.pos_embed(
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
 
         x = patch_embed + pos_embed
 
+        ##################Input normalization and embedding area over
+
         # add enerdit blocks
         # for block in self.blocks:
         #     x = block(x)
 
-        # add final (score out layer)
-        # TODO@DR: there should be another linear here with DyT and silu
-
         x = self.prehead_linear(x)
-
-        # print(f"x is now {x.shape}")  # x is now torch.Size([3, 8, 4])
-        # so B, seq_len, d_model
-
         space_score = self.space_head(x)
-        # print(
-        # f"sh is now {space_score.shape}"
-        # )  # [3, 8, 128] like B, seq_len, patch dim which is expected
         time_score = self.time_head(x)  # the time head is the same shape now
         # print(f"th is now {time_score.shape}")
 
