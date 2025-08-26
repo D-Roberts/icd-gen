@@ -51,12 +51,11 @@ class DyTanh(nn.Module):
 # print(dyt_out.grad)
 # print(dyt_out.shape) # (4, 10, 10, 3)
 
+
 # Embed
-
-
 # now the sequence has double width due to concat clean and noisy
 class PatchEmbedding(nn.Module):
-    def __init__(self, embed_dim, dim_in):
+    def __init__(self, dim_in, d_model):
         super().__init__()
 
         # aim to embed the clean and noisy together for dim reduction
@@ -64,13 +63,13 @@ class PatchEmbedding(nn.Module):
         # 200 dim
 
         # set bias to zero
-        self.projection = torch.nn.Linear(dim_in, embed_dim, bias=False)
+        self.projection = torch.nn.Linear(dim_in, d_model, bias=False)
 
     def forward(self, x):
         # print(f"layer in patch embed {self.projection}")
         # print(f"debug patch embed shapes {x.shape}")
         x = self.projection(x)
-        # (batch_size, embed_dim, num_patches)
+        # as expected (B, seq_len, d_model=embeddim)
         return x
 
 
@@ -283,7 +282,7 @@ class EnerdiT(nn.Module):
     ):
         super(EnerdiT, self).__init__()
 
-        self.DyT = DyTanh((batch, input_dim, context_len))
+        # self.DyT = DyTanh((batch, input_dim, context_len))
 
         # TODO@DR: note that the DiT pos embeddings are slightly different albeit
         # still sincos; might want to come back to this, it might matter
@@ -291,9 +290,9 @@ class EnerdiT(nn.Module):
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
 
-        self.patch_embed = PatchEmbedding(d_model, input_dim)
+        self.patch_embed = PatchEmbedding(input_dim, d_model)
 
-        print(f"patch embed layer in EnerdiT {self.patch_embed}")
+        # print(f"patch embed layer in EnerdiT {self.patch_embed}")
         #
         # self.embedpatch = PatchEmbed(input_dim, input_dim, channels, d_model, bias=True)
         # context_len is num of patches
@@ -315,50 +314,24 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
+        # self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
 
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)
 
-        self.pre_init()
-
-    def pre_init(self):
-        """will init weights here however way I want and whatever else I
-        want to init
-
-        for now the linears and the final but not final init
-        """
-
-        # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
-        # with this
-        def lin_init(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(lin_init)
-
-        # zero out out layer on the heads TODO@DR: think this again
-
-        nn.init.constant_(self.space_head.space_head.bias, 0)
-        nn.init.constant_(self.time_head.time_head.bias, 0)
-
-        nn.init.constant_(self.space_head.space_head.weight, 0)
-        nn.init.constant_(self.time_head.time_head.weight, 0)
-
     def forward(self, x):
-        # print("what shape comes the batch into Enerdit ", x.shape)
+        print("what shape comes the batch into Enerdit ", x.shape)
         b_s, in_d, context_len = x.shape
+        # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
-        x_for_dyt = torch.permute(x, (0, 2, 1))
+        # x_for_dyt = torch.permute(x, (0, 2, 1))
 
         # print(x_for_dyt.shape)
 
-        x = self.DyT(x_for_dyt)
+        # x = self.DyT(x_for_dyt)
 
         # x.retain_grad()  # need a hook
-        print("x shape after Dyt and reshape", x.shape)
+        # print("x shape after Dyt and reshape", x.shape)
         # (b, context, dim)
 
         # # permute so that (b, context_len, dim)
@@ -394,7 +367,7 @@ class EnerdiT(nn.Module):
         # add final (score out layer)
         # TODO@DR: there should be another linear here with DyT and silu
 
-        x = self.prehead_linear(x)
+        # x = self.prehead_linear(x)
 
         space_score = self.space_head(x)
         time_score = self.time_head(x)
@@ -402,17 +375,13 @@ class EnerdiT(nn.Module):
         # add enerditfinal
         # print("score shape ", score.shape)
 
-        # this is for all patches
-        # y = x[:,:,:,-1].view()
-
         # print(f"what is out of block shape", score.shape) #(b, context_len, in_dim)
         # print(f"what is the query going into energy layer ", x_for_dyt.shape)
 
-        # sh, th, y, cf1 TODO@DR. Not sure what value for cf1
-        # I'll just learn one
+        # sh, th, y, cf1 - learn it
         # y is the noised
-        energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
-        print(f"what is {self.corf}")
+        energy = self.final_enerdit_layer(space_score, time_score, x, self.corf)
+        # print(f"what is {self.corf}")
 
         # TODO@DR - reason through context next toward loss
 
@@ -421,7 +390,6 @@ class EnerdiT(nn.Module):
         # predict the clean image so do that for a first train run
 
         return energy, space_score, time_score
-        # return torch.permute(score, (0, 2,1)), x #shape of x is (b, context, d_model)
 
 
 # AdHoc testing

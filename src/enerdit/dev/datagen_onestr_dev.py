@@ -9,11 +9,7 @@ import math
 import numpy as np
 
 import matplotlib.pyplot as plt
-
-from skimage import data, img_as_float
-from skimage.restoration import denoise_nl_means, estimate_sigma
-from skimage.metrics import peak_signal_noise_ratio, structural_similarity
-from skimage.util import random_noise
+from torch.utils.data import Dataset, DataLoader
 
 
 class DataSampler:
@@ -271,3 +267,103 @@ def plot_partition(D, partition):
 
 
 plot_partition(8, partition)
+
+# #############Get train and test loaders here for dev
+
+
+class DatasetWrapper(Dataset):
+    """
+    (relic): currently, there is a "remainder" batch at the end, with size smaller than batch_size -- could discard it
+    """
+
+    def __init__(self, X, Y):
+        self.x = X
+        self.y = Y
+
+        self.dim_n = self.x.shape[1]
+        self.context_length = self.x.shape[2]
+
+    # Mandatory: Get input pair for training
+    def __getitem__(self, idx):
+        return self.x[idx, :, :], self.y[idx, :]
+
+    # Mandatory: Number of elements in dataset (i.e. size of batch dimension 0)
+    def __len__(self):
+        X_len = self.x.shape[0]
+        return X_len
+
+
+def grouped_data_train_test_split_util(
+    x_total,
+    y_total,
+    test_ratio,
+    as_torch=True,
+    rng=None,
+):
+    # Note that the datagen returns shape (batch, seq len, fused patch dim)
+    # the models so far expected a permuted version
+    x_total = torch.permute(x_total, (0, 2, 1))
+
+    x_total1 = x_total.numpy()  # these come in as tensors
+    y_total1 = y_total.numpy()
+
+    rng = (
+        rng or np.random.default_rng()
+    )  # determines how dataset is split; if no rng passed, create one
+
+    # now perform train test split and randomize
+    ntotal = len(y_total)
+
+    ntest = int(test_ratio * ntotal)
+    ntrain = ntotal - ntest
+
+    test_indices = rng.choice(ntotal, ntest, replace=False)
+    train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
+    train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
+
+    # grab train data
+    x_train = x_total1[train_indices, :, :]
+    y_train = y_total1[train_indices, :]
+    # grab test data
+    x_test = x_total1[test_indices, :, :]
+    y_test = y_total1[test_indices, :]
+
+    return (
+        torch.from_numpy(x_train),
+        torch.from_numpy(y_train),
+        torch.from_numpy(x_test),
+        torch.from_numpy(y_test),
+    )
+
+
+# Get train and test TODO@DR reason why split train test it this way vs generate
+# a separate test dataset like in jelassi for the grouped case
+
+x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
+    fused_seq, label, 0.2, as_torch=True, rng=None
+)
+
+# print(x_train.shape)
+# print(y_train.shape)
+batch_size = 4
+
+train_size = x_train.shape[0]
+# print(f"For dev: train_size {train_size} and test size {x_test.shape[0]} and xtrain shape {x_train.shape}")
+# train_size 16 and test size 4
+# xtrain shape for dev torch.Size([16, 128, 8])
+
+train_dataset = DatasetWrapper(x_train, y_train)
+test_dataset = DatasetWrapper(x_test, y_test)
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=0,
+)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=0,
+)
