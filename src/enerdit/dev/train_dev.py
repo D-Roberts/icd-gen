@@ -12,6 +12,7 @@ from PIL import Image
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from transformers.optimization import get_cosine_schedule_with_warmup
 
 from datagen_onestr_dev import train_loader, test_loader
 
@@ -129,6 +130,7 @@ model = EnerdiT(
     mlp_ratio=4,
 )
 
+
 optimizer = torch.optim.AdamW(
     model.parameters(),
     lr=0.001,
@@ -137,20 +139,50 @@ optimizer = torch.optim.AdamW(
         0.98,
     ),
     eps=1e-8,
-    weight_decay=0.0,
+    weight_decay=0.05,
 )
 
 loss_func_dev = nn.L1Loss()
 
 
+# add a test
+def test_eval(model, test_loader, loss_func_dev):
+    count = 0.0
+    test_loss_total = 0.0
+
+    with torch.no_grad():
+        for i, data in enumerate(test_loader, 0):
+            samples, targets = data
+            energy, space_score, time_score = model(samples.to(device))
+
+            # Use the ys label right now with l1 loss
+            # For architecture dev
+
+            preds = torch.permute(space_score, (0, 2, 1))
+            # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
+
+            # FOr l1 loss calculation - use last score on the query token
+            test_loss = loss_func_dev(preds[:, :, -1], targets.to(device)).item()
+
+        test_loss_total += test_loss
+        count += 1
+    return test_loss_total / count
+
+
 ##############Dev train on simple one structure small dataset
-epochs = 100
+epochs = 60
+train_size = len(train_loader)
+
+
+scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
 
 print(model)
 model.to(device)
 
+
 for epoch in range(epochs):
     print(f"***********Epoch is {epoch}")
+    epoch_loss = 0.0
     for i, data in enumerate(train_loader, 0):
         inputs, target = data
 
@@ -158,7 +190,8 @@ for epoch in range(epochs):
             model, inputs.to(device), target.to(device), optimizer, loss_func_dev, t=1
         )
 
-        print(f"loss is {loss}\n")
+        # print(f"loss is {loss}\n")
+        epoch_loss += loss
         # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 
         # CHeck that the weights are updating
@@ -167,5 +200,15 @@ for epoch in range(epochs):
         #     # if name == "space_head.space_head.weight": # yes weights are changing
         #     print(f"param is {param} and name is {name} ")
 
-        # if i == 2:
-        #     break
+    scheduler.step()  # step the learning rate; if not cosine then no scheduler
+    print("\tlast LR:", scheduler.get_last_lr())
+
+    # eval once per epoch in dev
+    test_lossl1_mean = test_eval(model, test_loader, loss_func_dev)
+    # print(f"Test l1 mean same set each epoch ***********{test_lossl1_mean}*******")
+    # print(f"Train epoch loss {epoch_loss/train_size}*******")
+
+    exp.log_metrics(
+        {"Dev train epoch l1 mean loss": epoch_loss / train_size}, step=epoch
+    )
+    exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)

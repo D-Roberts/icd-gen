@@ -316,7 +316,7 @@ class EnerdiT(nn.Module):
         # print(f"am I doing this? {self.time_head.time_head.weight}")
 
     def forward(self, x):
-        print("what shape comes the batch into Enerdit ", x.shape)
+        # print("what shape comes the batch into Enerdit ", x.shape)
         b_s, in_d, context_len = x.shape
         # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
