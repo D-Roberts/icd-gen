@@ -117,10 +117,14 @@ class EnerdiTFinal(nn.Module):
         """
 
         # TODO@DR: will have to see about shapes and signs
-        sc = sh - th * cf1
+        # sc = sh - th * cf1
 
         # TODO@DR: check that energy is calc on the right dims
-        energy = 0.5 * torch.sum(sc * y, dim=(-1))
+        # energy = 0.5 * torch.sum(sc * y, dim=(-1))
+
+        # let's see first with only space head
+        energy = 0.5 * torch.sum(sh * y, dim=(-1))
+
         return energy
 
 

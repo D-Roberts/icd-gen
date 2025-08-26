@@ -86,6 +86,9 @@ class Trainer:
         optimizer.zero_grad()
 
         energy, space_score, time_score = model(xs)
+        # print(f"what is -energy with only space score {energy.shape}")
+        # Let's return query energy only
+        qenergy = energy[:, -1]
 
         # Use the ys label right now with l1 loss
         # For architecture dev
@@ -106,7 +109,7 @@ class Trainer:
 
         return (
             loss.detach().item(),
-            energy.detach(),  # take out the energy for the context to analyze
+            qenergy.detach(),  # take out the energy for the context to analyze
             space_score.detach(),
             time_score.detach(),
         )
@@ -159,14 +162,14 @@ class SpaceLoss(nn.Module):
         since query is only one time step.
 
         """
-        print(f"what is y shape - the clean in SpaceLoss {y.shape}")
-        print(f"what is x shape - the noisy in SpaceLoss {x.shape}")
-        print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
+        # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
+        # print(f"what is x shape - the noisy in SpaceLoss {x.shape}")
+        # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
         # so here x is (B, dim, seq_len) while y=clean target on last noisy query
         # is (B, input_dim)
         duy = (y - x[:, :, -1]).mean()
 
-        print(f"what is duy shape now {duy.shape}")
+        # print(f"what is duy shape now {duy.shape}")
 
         # TODO@DR: figure out what to do about the t in my setup
         lspace = ((torch.norm(preds - duy, p=2)) ** 2).mean()
@@ -203,7 +206,7 @@ def test_eval(model, test_loader, loss_func_dev):
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 50
+epochs = 30
 train_size = len(train_loader)
 
 
@@ -223,10 +226,25 @@ for epoch in range(epochs):
             model, inputs.to(device), target.to(device), optimizer, spaceloss_dev, t=1
         )
 
-        print(f"loss is {loss}\n")
+        # print(f"energy on query {energy.shape}") # this is for the minibatch
+        # so let's just log the first
+
+        # print(f"loss is {loss}\n")
         epoch_loss += loss
         batch_count += 1
+
+        exp.log_metrics(
+            {"one -energy=logp in train batch": -energy[0]}, step=batch_count
+        )
+
+        # TODO@DR should not have values outside 0,1 for p
+        exp.log_metrics(
+            {"one p=exp(-en) in train batch": torch.exp(-energy[0])}, step=batch_count
+        )
+
         exp.log_metrics({"Dev train space batch loss": loss}, step=batch_count)
+        # exp.log_metrics({"Dev train spacehead-only batch query -energy=logp": -energy[:,-1]}, step=batch_count)
+        # exp.log_metrics({"Dev train spacehead-only batch p": torch.exp(-energy)}, step=batch_count)
 
         # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 

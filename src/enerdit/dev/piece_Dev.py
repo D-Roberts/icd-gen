@@ -167,8 +167,8 @@ class SpaceLoss(nn.Module):
         return lspace
 
 
-# together
-class DJLoss(nn.Module):
+# with space and time heads scores together
+class STLoss(nn.Module):
     def __init__(self):
-        super(DJLoss, self).__init__()
+        super(STLoss, self).__init__()
         pass
