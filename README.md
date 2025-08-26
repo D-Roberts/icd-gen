@@ -1,6 +1,6 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list:
+### TODO@DR running list (TODO@DR: stop adding self-todos, you aren't staff eng in tech now)
 
     *-1. Code up the Enerdit: priority 1. 
         - WIP
@@ -8,10 +8,12 @@
         - Start debug step-by-step:
             - 1. Debug archi with some known loss. [WIP]
                 - add some init to begin with
-                - use MSE on space score and clean label only [done]
+                - use MAE on space score and clean label only [done]
                 - retain only emebd and linears [done]
                 - next - need to make debug dataset small and easy a la Karpathy but not quite (one batch is too little)
-            
+                [done]
+            - 2. Dev new loss.
+            [DR self talk: this stuff is so cool I don't even care if it gets published that much anymore. Ok I do care but still.]
 
     *0. Code for models on the new patch structure datagen (priority 2)
 

@@ -152,7 +152,6 @@ class Trainer:
 # ys = torch.randn(2, 1, requires_grad=True)
 
 
-# page 4
 class TimeLoss(nn.Module):
     def __init__(self, d_model, reduction="mean"):
         super(TimeLoss, self).__init__()
@@ -169,7 +168,6 @@ class TimeLoss(nn.Module):
         y: this is the target
         """
 
-        # For right now get Eq 4 with only the predicting patch x and y
         dUt = 0.5 * ((self.d_model - torch.norm(y - x, p=2) ** 2)).mean()
 
         # Eq 5: TODO@DR: one mean or two means now?
@@ -191,11 +189,10 @@ class SpaceLoss(nn.Module):
         """
         duy = (y - x).mean()
 
-        # Again here preds should be grad of U(y,t) wrt to y
-        # and this loss is for time step t; not sure in my case
-        ldsm = ((torch.norm(preds - duy, p=2)) ** 2).mean()
+        # TODO@DR: figure out what to do about the t in my setup
+        lspace = ((torch.norm(preds - duy, p=2)) ** 2).mean()
 
-        return ldsm
+        return lspace
 
 
 trainer = Trainer()

@@ -140,3 +140,35 @@ print(dyt)
 
 x = dyt(total_embed)
 print(f"in shape {total_embed.shape} and out shape {x.shape}")
+
+# #############Now to the hard stuff - the loss
+
+# Step 1.
+
+
+# this only first
+class SpaceLoss(nn.Module):
+    def __init__(self):
+        super(SpaceLoss, self).__init__()
+        pass
+
+    def forward(self, preds, x, y, t=1):
+        """
+        Equation 3; again not sure how will treat time step here
+        since query is only one time step (noise level)
+          with t of a specific value
+
+        """
+        duy = (y - x).mean()
+
+        # TODO@DR: figure out what to do about the t in my setup
+        lspace = ((torch.norm(preds - duy, p=2)) ** 2).mean()
+
+        return lspace
+
+
+# together
+class DJLoss(nn.Module):
+    def __init__(self):
+        super(DJLoss, self).__init__()
+        pass

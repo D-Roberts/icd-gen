@@ -94,7 +94,12 @@ class Trainer:
         # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
 
         # FOr l1 loss calculation - use last score on the query token
-        loss = loss_func(preds[:, :, -1], ys)
+        # loss = loss_func(preds[:, :, -1], ys)
+
+        # now using only space head preds in space loss component
+        # preds, x, y, t=1)
+
+        loss = loss_func(preds, xs, ys, t=t)
 
         loss.backward()
         optimizer.step()
@@ -139,10 +144,38 @@ optimizer = torch.optim.AdamW(
         0.98,
     ),
     eps=1e-8,
-    weight_decay=0.05,
+    weight_decay=0.0,
 )
 
+
+class SpaceLoss(nn.Module):
+    def __init__(self):
+        super(SpaceLoss, self).__init__()
+        pass
+
+    def forward(self, preds, x, y, t=1):
+        """
+        Equation 3; again not sure how will treat time step here
+        since query is only one time step.
+
+        """
+        print(f"what is y shape - the clean in SpaceLoss {y.shape}")
+        print(f"what is x shape - the noisy in SpaceLoss {x.shape}")
+        print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
+        # so here x is (B, dim, seq_len) while y=clean target on last noisy query
+        # is (B, input_dim)
+        duy = (y - x[:, :, -1]).mean()
+
+        print(f"what is duy shape now {duy.shape}")
+
+        # TODO@DR: figure out what to do about the t in my setup
+        lspace = ((torch.norm(preds - duy, p=2)) ** 2).mean()
+
+        return lspace
+
+
 loss_func_dev = nn.L1Loss()
+spaceloss_dev = SpaceLoss()
 
 
 # add a test
@@ -170,16 +203,16 @@ def test_eval(model, test_loader, loss_func_dev):
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 60
+epochs = 50
 train_size = len(train_loader)
 
 
-scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
+# scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
 
 print(model)
 model.to(device)
 
-
+batch_count = 0
 for epoch in range(epochs):
     print(f"***********Epoch is {epoch}")
     epoch_loss = 0.0
@@ -187,11 +220,14 @@ for epoch in range(epochs):
         inputs, target = data
 
         loss, energy, sh, th = trainer.train_step(
-            model, inputs.to(device), target.to(device), optimizer, loss_func_dev, t=1
+            model, inputs.to(device), target.to(device), optimizer, spaceloss_dev, t=1
         )
 
-        # print(f"loss is {loss}\n")
+        print(f"loss is {loss}\n")
         epoch_loss += loss
+        batch_count += 1
+        exp.log_metrics({"Dev train space batch loss": loss}, step=batch_count)
+
         # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 
         # CHeck that the weights are updating
@@ -200,15 +236,14 @@ for epoch in range(epochs):
         #     # if name == "space_head.space_head.weight": # yes weights are changing
         #     print(f"param is {param} and name is {name} ")
 
-    scheduler.step()  # step the learning rate; if not cosine then no scheduler
-    print("\tlast LR:", scheduler.get_last_lr())
+    # # scheduler.step()  # step the learning rate; if not cosine then no scheduler
+    # print("\tlast LR:", scheduler.get_last_lr())
 
     # eval once per epoch in dev
+    # leave the l1 for now
     test_lossl1_mean = test_eval(model, test_loader, loss_func_dev)
     # print(f"Test l1 mean same set each epoch ***********{test_lossl1_mean}*******")
     # print(f"Train epoch loss {epoch_loss/train_size}*******")
 
-    exp.log_metrics(
-        {"Dev train epoch l1 mean loss": epoch_loss / train_size}, step=epoch
-    )
+    exp.log_metrics({"Dev Epoch Space loss": epoch_loss / train_size}, step=epoch)
     exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
