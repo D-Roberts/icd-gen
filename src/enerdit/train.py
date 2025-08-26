@@ -268,6 +268,8 @@ epochs = 3
 # batchsize is set in datagen for this synthetic batch group structure setup
 lamu = 0.001  # this is hyperpar for U regularizer
 
+print(model)
+
 for epoch in range(epochs):
     for i, data in enumerate(train_loader, 0):
         inputs, target = data

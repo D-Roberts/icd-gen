@@ -316,16 +316,32 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.space_head = TimeHead(d_model, input_dim, context_len)
-        self.time_head = SpaceHead(d_model, input_dim, context_len)
+        self.time_head = TimeHead(d_model, input_dim, context_len)
+        self.space_head = SpaceHead(d_model, input_dim, context_len)
 
         self.pre_init()
 
     def pre_init(self):
         """will init weights here however way I want and whatever else I
         want to init
+
+        for now the linears and the final but not final init
         """
-        pass
+
+        def lin_init(module):
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+        self.apply(lin_init)
+
+        # zero out out layer on the heads TODO@DR: think this again
+        nn.init.constant_(self.space_head.space_head.bias, 0)
+        nn.init.constant_(self.time_head.time_head.bias, 0)
+
+        nn.init.constant_(self.space_head.space_head.weight, 0)
+        nn.init.constant_(self.time_head.time_head.weight, 0)
 
     def forward(self, x):
         # print("what shape comes the batch into Enerdit ", x.shape)

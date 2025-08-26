@@ -6,7 +6,9 @@
     *-1. Code up the Enerdit: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
-                
+        - Start debug step-by-step:
+            - 1. Debug archi with some known loss. [WIP]
+            
 
     *0. Code for models on the new patch structure datagen (priority 2)
 
