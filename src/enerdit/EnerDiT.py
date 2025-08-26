@@ -308,13 +308,15 @@ class EnerdiT(nn.Module):
 
         # TODO@DR consider a Silu and DyT here maybe - silu were working so well - check that diff
 
-        self.blocks = nn.ModuleList(
-            [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
-        )
+        # self.blocks = nn.ModuleList(
+        #     [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
+        # )
 
-        # correction factor space time scores
+        # # correction factor space time scores
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
+
+        self.prehead_linear = nn.Linear(d_model, d_model, bias=None)
 
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)
@@ -337,6 +339,7 @@ class EnerdiT(nn.Module):
         self.apply(lin_init)
 
         # zero out out layer on the heads TODO@DR: think this again
+
         nn.init.constant_(self.space_head.space_head.bias, 0)
         nn.init.constant_(self.time_head.time_head.bias, 0)
 
@@ -384,10 +387,14 @@ class EnerdiT(nn.Module):
         x = patch_embed + pos_embed
 
         # add enerdit blocks
-        for block in self.blocks:
-            x = block(x)
+        # for block in self.blocks:
+        #     x = block(x)
 
         # add final (score out layer)
+        # TODO@DR: there should be another linear here with DyT and silu
+
+        x = self.prehead_linear(x)
+
         space_score = self.space_head(x)
         time_score = self.time_head(x)
 

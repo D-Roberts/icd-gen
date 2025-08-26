@@ -2,12 +2,16 @@
 
 ### TODO@DR running list:
 
-    *-2. TODO@DR: talk less to myself (DR) and more to others.
+    *-2. TODO@DR: talk less to myself (DR) and more to others. Self-feedback loop too tight. [not a huge priority right now but for the future [WIP]]
+
     *-1. Code up the Enerdit: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
         - Start debug step-by-step:
             - 1. Debug archi with some known loss. [WIP]
+                - add some init to begin with
+                - use MSE on space score and clean label only [done]
+                - retain only emebd and linears
             
 
     *0. Code for models on the new patch structure datagen (priority 2)

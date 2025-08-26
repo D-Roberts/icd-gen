@@ -78,37 +78,39 @@ class Trainer:
     ):
         optimizer.zero_grad()
 
+        energy, space_score, time_score = model(xs)
+
         ############################################Losses - TODO@DR - should
         ########factor out / separate into its own Loss class
 
-        energy, space_score, time_score = model(xs)
+        # # query energy
+        # qenergy = energy[:, -1]
 
-        # query energy
-        qenergy = energy[:, -1]
+        # # print("in train step device of xs ys", xs.device, ys.device)
 
-        # print("in train step device of xs ys", xs.device, ys.device)
+        # loss = 0
 
-        loss = 0
+        # # this is th portion
+        # if loss_funct:  # so calculating this on the query and its label
+        #     loss1 = loss_funct(time_score, xs[:, :, -1], ys, t=t)
+        #     loss += loss1
 
-        # this is th portion
-        if loss_funct:  # so calculating this on the query and its label
-            loss1 = loss_funct(time_score, xs[:, :, -1], ys, t=t)
-            loss += loss1
+        # # this is sh portion
+        # if loss_funcs:
+        #     loss2 = loss_funcs(space_score, xs[:, :, -1], ys, t=t)
+        #     loss += loss2
 
-        # this is sh portion
-        if loss_funcs:
-            loss2 = loss_funcs(space_score, xs[:, :, -1], ys, t=t)
-            loss += loss2
+        # # Test an added direct U component to tighten the feedback loop loss-preds (an NLL afterall)
+        # # Here adding the average over context but with a hyperparam
 
-        # Test an added direct U component to tighten the feedback loop loss-preds (an NLL afterall)
-        # Here adding the average over context but with a hyperparam
-
-        loss += lamu * energy.mean()
+        # loss += lamu * energy.mean()
+        ############################Here above is the new loss to debug and tune
+        #######later, after archi ###############
 
         # for patch diffusion loss from EDM
         # print(f"shape of score {score.shape} and x {xs.shape}")
-        # preds = torch.permute(score, (0, 2,1))
-        # loss = loss_funcs(preds, xs)
+        preds = torch.permute(space_score, (0, 2, 1))
+        loss = loss_funcs(preds, xs)
 
         loss.backward()
         optimizer.step()
@@ -198,6 +200,7 @@ class SpaceLoss(nn.Module):
 
 trainer = Trainer()
 
+
 model = EnerdiT(
     batch=4,
     context_len=10,
@@ -220,7 +223,10 @@ optimizer = torch.optim.AdamW(
     weight_decay=0.0,
 )
 
-# loss_func = nn.MSELoss()
+# For archi debug - use some loss, let's do MSE
+
+loss_func_debug = nn.MSELoss()
+
 loss_funct = TimeLoss(d_model=32)
 loss_funcs = SpaceLoss()
 
@@ -279,7 +285,7 @@ for epoch in range(epochs):
 
         # Pass None if only one component of the loss is used
         loss, energy, sh, th = trainer.train_step(
-            model, inputs, target, optimizer, loss_funct, loss_funcs, t=1, lamu=lamu
+            model, inputs, target, optimizer, None, loss_func_debug, t=1, lamu=lamu
         )
 
         # What would t be for me?
