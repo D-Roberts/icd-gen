@@ -137,6 +137,7 @@ class EnerdiTFinal(nn.Module):
         # TODO @DR: Should cf1 be analytically estimated / approx
         # a hyperparam or learned in here jointly?
 
+        # TODO@DR: will have to see about shapes
         sc = sh - th * cf1
 
         # TODO@DR: check that energy is calc on the right dims
@@ -182,16 +183,20 @@ class TimeHead(nn.Module):
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_time = DyTanh((d_model, context_len))
-        self.silu = nn.SiLU()
+        # self.dyt_time = DyTanh((d_model, context_len))
+        # self.silu = nn.SiLU()
         self.time_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
-        x = torch.permute(x, (0, 2, 1))
-        x = self.dyt_time(x)
+        # x = torch.permute(x, (0, 2, 1))
+        # x = self.dyt_time(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        x = self.silu(x)
-        x = self.time_head(torch.permute(x, (0, 2, 1)))
+        # x = self.silu(x)
+        # x = self.time_head(torch.permute(x, (0, 2, 1)))
+
+        # TODO@DR simplify way down first
+        x = self.time_head(x)
+
         return x
 
 
@@ -203,16 +208,20 @@ class SpaceHead(nn.Module):
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_space = DyTanh((d_model, context_len))
-        self.silu = nn.SiLU()
+        # self.dyt_space = DyTanh((d_model, context_len))
+        # self.silu = nn.SiLU()
         self.space_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
-        x = torch.permute(x, (0, 2, 1))
-        x = self.dyt_space(x)
+        # print(f"shape in head {x.shape}") # [3, 8, 4] is (B, seq_len, d_model)
+        # x = torch.permute(x, (0, 2, 1))
+        # x = self.dyt_space(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        x = self.silu(x)
-        x = self.space_head(torch.permute(x, (0, 2, 1)))
+        # x = self.silu(x)
+        # x = self.space_head(torch.permute(x, (0, 2, 1)))
+
+        # TODO@DR: simplify way down first
+        x = self.space_head(x)
         return x
 
 
@@ -350,15 +359,15 @@ class EnerdiT(nn.Module):
 
         x = self.prehead_linear(x)
 
-        print(f"x is now {x.shape}")  # x is now torch.Size([3, 8, 4])
+        # print(f"x is now {x.shape}")  # x is now torch.Size([3, 8, 4])
         # so B, seq_len, d_model
 
         space_score = self.space_head(x)
-        print(
-            f"sh is now {space_score.shape}"
-        )  # [3, 8, 128] like B, seq_len, patch dim which is expected
+        # print(
+        # f"sh is now {space_score.shape}"
+        # )  # [3, 8, 128] like B, seq_len, patch dim which is expected
         time_score = self.time_head(x)  # the time head is the same shape now
-        print(f"th is now {time_score.shape}")
+        # print(f"th is now {time_score.shape}")
 
         # TODO@DR: what shapes should the scores be? Well this will
         # be determined in the loss###########################

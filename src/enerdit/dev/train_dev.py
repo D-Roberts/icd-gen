@@ -145,7 +145,7 @@ loss_func_dev = nn.L1Loss()
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 1
+epochs = 30
 
 print(model)
 model.to(device)
@@ -160,7 +160,13 @@ for epoch in range(epochs):
         )
 
         print(f"loss is {loss}\n")
+        # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 
-        # print(f"space score shape {sh.shape} and values {sh}\n")
-        if i == 1:
-            break
+        # CHeck that the weights are updating
+        # for name, param in model.named_parameters():
+        #     print(name)
+        #     # if name == "space_head.space_head.weight": # yes weights are changing
+        #     print(f"param is {param} and name is {name} ")
+
+        # if i == 2:
+        #     break
