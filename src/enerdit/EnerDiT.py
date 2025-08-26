@@ -330,6 +330,8 @@ class EnerdiT(nn.Module):
         for now the linears and the final but not final init
         """
 
+        # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
+        # with this
         def lin_init(module):
             if isinstance(module, nn.Linear):
                 nn.init.xavier_uniform_(module.weight)
