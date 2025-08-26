@@ -12,7 +12,7 @@
                 - add some init to begin with
                 - use MSE on space score and clean label only [done]
                 - retain only emebd and linears [done]
-                - next - need to make debug dataset small and easy ala Karpathy but not quite (one batch is too little)
+                - next - need to make debug dataset small and easy a la Karpathy but not quite (one batch is too little)
             
 
     *0. Code for models on the new patch structure datagen (priority 2)
