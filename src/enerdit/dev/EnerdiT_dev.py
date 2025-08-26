@@ -9,47 +9,30 @@ from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 import torch.nn.functional as F
 
 
-# As in Transformers without normalization
-# https://github.com/jiachenzhu/DyT/blob/main/dynamic_tanh.py
+# Similar to Transformers without normalization
 class DyTanh(nn.Module):
-    """"""
+    """
+    dev dyt
 
-    def __init__(self, normalized_shape, channels_last=True, alpha_init_value=0.5):
+    expected normalized shape would be (seq_len, input_dim)
+
+    elementwise layer; so shape out is like shape in.
+    """
+
+    def __init__(self, shape_in, alpha_init_value=0.5):
         super().__init__()
         self.alpha_init_value = alpha_init_value
-        self.channels_last = channels_last
 
         self.alpha = nn.Parameter(torch.ones(1) * alpha_init_value)
-        self.weight = nn.Parameter(torch.ones(normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(normalized_shape))
+        self.weight = nn.Parameter(torch.ones(shape_in))
+        # print("tanh weight shape", self.weight.shape)
+        self.bias = nn.Parameter(torch.zeros(shape_in))
 
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
         # print("In tanh x shape", x.shape)
-        # print("In tanh weight shape ", self.weight.shape)
-
-        # TODO@DR: put the weight and bias back later but need to match the shapes
-
-        # if self.channels_last:
-        #     x = x * self.weight + self.bias
-        # else:
-        #     x = x * self.weight[:, None, None] + self.bias[:, None, None]
+        x = x * self.weight + self.bias
         return x
-
-
-# Ad-hoc test
-# X_train = torch.randn(4, 10, 10, 3, requires_grad=True)  # (B,H, W ,C)
-# dyt = DyTanh(normalized_shape=(4, 10, 10, 3), channels_last=True, alpha_init_value=0.1)
-# dyt_out = dyt(X_train)
-
-# dyt_out.retain_grad()
-
-# dummy_loss = dyt_out.sum()
-# dummy_loss.backward()
-
-# Let's see its grad
-# print(dyt_out.grad)
-# print(dyt_out.shape) # (4, 10, 10, 3)
 
 
 # Embed
@@ -73,8 +56,7 @@ class PatchEmbedding(nn.Module):
         return x
 
 
-# TODO@DR: recall that I had an issue with the DiT/SiT Sin Pos Embed-
-# double check what that was about. Also recall not in HF.
+# this is the more standard sin pos embed; diff a bit from dit
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=200):
         super().__init__()
@@ -145,29 +127,30 @@ class EnerdiTFinal(nn.Module):
         return energy
 
 
-class FinalLayer(nn.Module):
+class PreHead(nn.Module):
     """
     this is before the two heads
     """
 
-    def __init__(self, d_model, input_dim, context_len):
+    def __init__(self, context_len, d_model):
         super().__init__()
 
-        self.dyt_final = DyTanh((d_model, context_len))
+        self.dyt_final = DyTanh((context_len, d_model))
+        self.silu = nn.SiLU()
 
         # TODO@DR: not sure yet about the modulation.
         # TODO: @DR a potential differentiable one.
+        # TODO@DR also the conditioning on context - might try different
+        # ways like a cross-attn layer added in at differnt layers
 
-        # TODO@DR: COnsider adding a Silu here also
-
-        self.final_dit_layer = nn.Linear(d_model, input_dim, bias=False)
+        self.prehead_layer = nn.Linear(d_model, d_model, bias=False)
 
     def forward(self, x):
-        x = torch.permute(x, (0, 2, 1))
+        # print("x shape ans it comes into dyt_final", x.shape)
         x = self.dyt_final(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-
-        x = self.final_dit_layer(torch.permute(x, (0, 2, 1)))
+        x = self.silu(x)
+        x = self.prehead_layer(x)
         return x
 
 
@@ -178,23 +161,20 @@ class FinalLayer(nn.Module):
 class TimeHead(nn.Module):
     """
     with a silu and a dyt as in pre-norm but no resid connections
+    as of right now
     """
 
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        # self.dyt_time = DyTanh((d_model, context_len))
-        # self.silu = nn.SiLU()
+        self.dyt_time = DyTanh((context_len, d_model))
+        self.silu = nn.SiLU()
         self.time_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
-        # x = torch.permute(x, (0, 2, 1))
-        # x = self.dyt_time(x)
+        x = self.dyt_time(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        # x = self.silu(x)
-        # x = self.time_head(torch.permute(x, (0, 2, 1)))
-
-        # TODO@DR simplify way down first
+        x = self.silu(x)
         x = self.time_head(x)
 
         return x
@@ -208,19 +188,14 @@ class SpaceHead(nn.Module):
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        # self.dyt_space = DyTanh((d_model, context_len))
-        # self.silu = nn.SiLU()
+        self.dyt_space = DyTanh(shape_in=(context_len, d_model))
+        self.silu = nn.SiLU()
         self.space_head = nn.Linear(d_model, input_dim, bias=True)
 
     def forward(self, x):
         # print(f"shape in head {x.shape}") # [3, 8, 4] is (B, seq_len, d_model)
-        # x = torch.permute(x, (0, 2, 1))
-        # x = self.dyt_space(x)
-        # print("shape of x as it comes out of dyt in final layer ", x.shape)
-        # x = self.silu(x)
-        # x = self.space_head(torch.permute(x, (0, 2, 1)))
-
-        # TODO@DR: simplify way down first
+        x = self.dyt_space(x)
+        x = self.silu(x)
         x = self.space_head(x)
         return x
 
@@ -321,11 +296,40 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
+        self.prehead_linear = PreHead(context_len, d_model)
 
         # a kind of unembed
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)
+        # self.pre_init() #TODO@DR handle init later after model dev /  clearly learns
+
+    def pre_init(self):
+        """will init weights here however way I want and whatever else I
+        want to init
+
+        for now the linears and the final but not final init
+        """
+
+        # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
+        # with this
+        def lin_init(module):
+            if isinstance(module, nn.Linear):
+                # TODO@DR: reconsider later: not learning well with this below at this time in dev
+                # nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+        self.apply(lin_init)
+
+        # zero out out layer on the heads TODO@DR: think this again
+
+        nn.init.constant_(self.space_head.space_head.bias, 0)
+        nn.init.constant_(self.time_head.time_head.bias, 0)
+
+        # TODO@DR: reconsider later: not learning well with this below at this time
+        # nn.init.constant_(self.space_head.space_head.weight, 0)
+        # nn.init.constant_(self.time_head.time_head.weight, 0)
+        # print(f"am I doing this? {self.time_head.time_head.weight}")
 
     def forward(self, x):
         print("what shape comes the batch into Enerdit ", x.shape)

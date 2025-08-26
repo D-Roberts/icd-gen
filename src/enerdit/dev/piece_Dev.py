@@ -103,7 +103,40 @@ print(total_embed.shape)
 # print(torch.arange(0, 8, 2).float() * (-math.log(10000.0) / 8))
 # print(torch.exp(torch.arange(0, 8, 2).float() * (-math.log(10000.0) / 8)))
 
-for name, param in pemb.named_parameters():
-    print(f"param is {param} and name is {name} ")
+# for name, param in pemb.named_parameters():
+#     print(f"param is {param} and name is {name} ")
 
 # no param in position embeddings - OK
+
+
+class DyTanh(nn.Module):
+    """
+    dev dyt
+
+    expected shape_in would be (seq_len, input_dim)
+
+    elementwise layer; so shape out is like shape in.
+    """
+
+    def __init__(self, shape_in, alpha_init_value=0.5):
+        super().__init__()
+        self.alpha_init_value = alpha_init_value
+
+        self.alpha = nn.Parameter(torch.ones(1) * alpha_init_value)
+        self.weight = nn.Parameter(torch.ones(shape_in))
+        print("tanh weight shape", self.weight.shape)
+        self.bias = nn.Parameter(torch.zeros(shape_in))
+
+    def forward(self, x):
+        x = torch.tanh(self.alpha * x)
+        print("In tanh x shape", x.shape)
+        x = x * self.weight + self.bias
+        return x
+
+
+# embeddings for instance would be 4, 8, 32; here channels would be 32
+dyt = DyTanh(shape_in=(8, 32))
+print(dyt)
+
+x = dyt(total_embed)
+print(f"in shape {total_embed.shape} and out shape {x.shape}")
