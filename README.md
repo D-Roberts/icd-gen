@@ -2,7 +2,7 @@
 
 ### TODO@DR running list:
 
-
+    *-2. TODO@DR: talk less to myself (DR) and more to others.
     *-1. Code up the Enerdit: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
