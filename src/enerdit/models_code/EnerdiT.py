@@ -316,7 +316,7 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = nn.Linear(d_model, d_model, bias=None)
+        self.prehead_linear = nn.Linear(d_model, d_model, bias=False)
 
         self.time_head = TimeHead(d_model, input_dim, context_len)
         self.space_head = SpaceHead(d_model, input_dim, context_len)

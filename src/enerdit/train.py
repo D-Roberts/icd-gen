@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from datagen import (
+from data.datagen import (
     PreBatchedDataset,
     train_batched_data,
     test_batched_data,
