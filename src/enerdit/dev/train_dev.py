@@ -65,7 +65,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 
 class Trainer:
     """
-    To train the EnerDiT
+    To train the EnerdiT.
     """
 
     def __init__(
