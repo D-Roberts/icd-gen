@@ -192,17 +192,74 @@ class TimeEmbedding(nn.Module):
 
 
 tembed = TimeEmbedding(32, 256, 10 ** (-9), 10**3)
-print(tembed)
-print(
-    tembed.time_embedding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
-)  # 128
+# print(tembed)
+# print(
+#     tembed.time_embedding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
+# )  # 128
 
 t_emb = tembed.forward(torch.tensor([1, 3, 4, 5, 6, 7, 8, 2]))
 
 # print(f"time embeddings for a time tensor {torch.tensor([1, 3, 4])} are {t_emb} of shape {t_emb.shape}")
-# one embedding for each t; and will have 1 t for each token in the sequence
-print(total_embed.shape)
-print(t_emb.shape)
-print(total_embed + t_emb)
+# # one embedding for each t; and will have 1 t for each token in the sequence
+# print(total_embed.shape)
+# print(t_emb.shape)
+# print(total_embed + t_emb)
 # As of right now time_emb is like space_emb - and it gets added accross the batch so it assumes
 # the same t tensor for each sequence in the batch TODO@DR will have to reason about this setup
+
+logt = torch.empty(4).uniform_(math.log(10 ** (-9)), math.log(10**3))
+print(f"min logt {torch.min(logt)} and max {torch.max(logt)}")
+print(math.log(10 ** (-9)))  # -20
+print(math.log(10**3))  # 6.9
+
+t = torch.exp(torch.empty(4).uniform_(math.log(10 ** (-9)), math.log(10**3)))
+# t cannot be negative
+print(1 / torch.sqrt(torch.min(t)), 1 / torch.sqrt(torch.max(t)))  # these can be large
+# z
+# torch.randn(*size, *, generator=None, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False, pin_memory=False) → Tensor
+z = torch.randn(4)
+print(z)
+zsqrt = torch.sqrt(t) * z
+
+# ------------------
+z = torch.randn(3, 4)  # noise for one patch of size 4 in a batch of 3
+time_score = torch.randn(3, 1)  # say this is predicted time score
+d = 4  # say patch is 2x2
+
+# t for this seq query - the t in noise
+t_for_q = t[-1]  # very small here
+print(f"t_for_q {t_for_q}")
+
+znormedsq = torch.norm(z, p=2, dim=-1) ** 2
+print(f"znormed sq {znormedsq}")
+
+term1 = (t_for_q / d) * time_score
+print(f"term1 in time loss {term1}")  # very small bc of t
+
+# # print(f"z normed shape {znormedsq.shape}")
+term2 = 0.5 * (1 - znormedsq / d)
+print(f"term2 in time loss {term2}")
+
+ltime = (term1 - term2) ** 2
+print(f"batch mean time loss {ltime.mean(dim=-1)}")  # looks reasonable
+
+####################the space loss
+# d is the patch size; going with the patch rather than the double patch here
+# use same z and t
+
+# the space head pred score would be a matrix shape of z
+sp = torch.randn(3, 4)
+# space loss term1 (as in eq 43); non neg and non-zero
+term1 = math.sqrt(t_for_q / d) * sp
+print(f"term1 in space loss {term1}")
+
+term2 = z / math.sqrt(d)
+print(f"term2 in space loss {term2}")
+subtract = term1 - term2
+print(f"subtract in space loss {subtract}")
+
+# print(f"in space loss subtr shape {subtract.shape}") #3, 64
+lspace = (torch.norm(subtract, p=2, dim=1)) ** 2
+# take norm over the input dim
+print(f"what is lspace {lspace} and over minibatch {lspace.mean()}")
+# seems reasonable

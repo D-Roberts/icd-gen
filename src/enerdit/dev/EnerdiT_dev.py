@@ -97,7 +97,11 @@ class TimeEmbedding(nn.Module):
     """
 
     def __init__(
-        self, d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
+        self,
+        d_model,
+        frequency_embedding_size=256,
+        mint=1 / (10**3),
+        maxt=1 / (10 ** (-9)),
     ):
         super().__init__()
         self.time_embedder = nn.Sequential(
@@ -337,7 +341,10 @@ class EnerdiT(nn.Module):
         self.patch_embed = PatchEmbedding(input_dim, d_model)
         self.space_embed = SpaceEmbedding(d_model, context_len)
         self.time_embed = TimeEmbedding(
-            d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
+            d_model,
+            frequency_embedding_size=256,
+            mint=1 / (10**3),
+            maxt=1 / (10 ** (-9)),
         )
 
         ######################################Before this - inputs embedding

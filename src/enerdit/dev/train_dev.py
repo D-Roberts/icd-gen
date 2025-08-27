@@ -94,22 +94,22 @@ class Trainer:
         # Used the ys label right now with l1 loss for architecture dev
         # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
         # FOr l1 loss calculation - use last score on the query token
-        # loss = loss_func(preds[:, :, -1], ys)
+        loss = st_loss(space_score[:, :, -1], ys[:, :64])  # use only the non-zero
 
         # here in code the label y is the clean
-        loss, loss_sp, loss_t = st_loss(
-            space_score, time_score, xs, ys, t, return_both=True
-        )
+        # loss, loss_sp, loss_t = st_loss(
+        #     space_score, time_score, xs, ys, t, return_both=True
+        # )
 
-        print(f"in train step print space loss {loss_sp}")
-        print(f"in train step print time loss {loss_t}")
+        # print(f"in train step print space loss {loss_sp}")
+        # print(f"in train step print time loss {loss_t}")
 
         loss.backward()
         optimizer.step()
 
         return (
-            loss_sp.detach().item(),
-            loss_t.detach().item(),  # for debug
+            # loss_sp.detach().item(),
+            # loss_t.detach().item(),  # for debug
             loss.detach().item(),
             qenergy.detach()
             .cpu()
@@ -175,7 +175,9 @@ class TimeLoss(nn.Module):
         # print(f"in t loss query shape {query.shape}")
         # print(f"in sp loss clean shape {clean.shape}")
 
-        # t for this seq query
+        # TODO@DR: would be best to get the z directly
+
+        # t for this seq query last token
         t = tt[-1]
 
         # the noise
@@ -237,7 +239,7 @@ class SpaceLoss(nn.Module):
         t = tt[-1]
 
         # the noise
-        z = (query - clean) * (1 / math.sqrt(t))
+        z = (query - clean) * (1 / torch.sqrt(t))
 
         # the space head pred score
         sp = preds[:, :, -1]
@@ -312,6 +314,14 @@ train_size = len(train_loader)
 # print(model)
 model.to(device)
 
+
+def normalize(inputs, target):
+    in_min, in_max = torch.min(inputs), torch.max(inputs)
+    target_min, target_max = torch.min(target), torch.max(target)
+    range = in_max - in_min
+    return (inputs - in_min) / range, (target - target_min) / (target_max - target_min)
+
+
 batch_count = 0
 energies = []
 for epoch in range(epochs):
@@ -320,6 +330,12 @@ for epoch in range(epochs):
     epoch_loss = 0.0
     for i, data in enumerate(train_loader, 0):
         inputs, target = data
+
+        #  all val bet 0 and 1
+        inputs, target = normalize(inputs, target)
+
+        # print(f"check range inputs {torch.min(inputs)}, {torch.max(inputs)}")
+        # print(f"check range targets {torch.min(target)}, {torch.max(target)}")
 
         # print(f"one batch inputs are {inputs[0]} of shape {inputs[0].shape}") #[128, 8] so (2Xpatch dim, seqlen) for shape as expected
         # print(f"one batch label is {target[0]} of shape {target[0].shape}") # as expected
@@ -336,19 +352,34 @@ for epoch in range(epochs):
         )
         # print(f"t min max is {torch.round(torch.min(t), decimals=6)} and {torch.round(torch.max(t), decimals=2)}")
         # t looks ok; so here is the same t tensor for each instance of this minibatch
+        # TODO@DR: note that right now the same t will land on the last token / query for each instance
+        # in the mini batch and will be used in noisy and in loss calculation. Must see about this.
+        # maybe randomize per instance.
 
-        loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
+        # loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
+        #     model,
+        #     inputs.to(device),
+        #     target.to(device),
+        #     optimizer,
+        #     stloss_dev,
+        #     t.to(
+        #         device
+        #     ),  # t will be time embedded and added to the patch and space embeddings
+        # )
+        # # TODO@DR: after seeing learning with this loss, experiment with the
+        # # energy regularizer too but not until loss goes down as is
+
+        # test after time embeds with l1 on space score
+        loss, energy, sh, th = trainer.train_step(
             model,
             inputs.to(device),
             target.to(device),
             optimizer,
-            stloss_dev,
+            loss_func_dev,
             t.to(
                 device
             ),  # t will be time embedded and added to the patch and space embeddings
         )
-        # TODO@DR: after seeing learning with this loss, experiment with the
-        # energy regularizer too but not until loss goes down as is
 
         # print(f"energy on query {energy.shape}") # this is for the minibatch
         # so let's just log the first
@@ -368,8 +399,8 @@ for epoch in range(epochs):
         # )
 
         exp.log_metrics({"batch loss": loss}, step=batch_count)
-        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
-        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+        # exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+        # exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
         # exp.log_metrics({"Dev train spacehead-only batch query -energy=logp": -energy[:,-1]}, step=batch_count)
         # exp.log_metrics({"Dev train spacehead-only batch p": torch.exp(-energy)}, step=batch_count)

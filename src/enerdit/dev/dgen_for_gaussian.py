@@ -160,40 +160,6 @@ class GroupSampler(DataSampler):
         # last dim can be viewed as a patch flattened
         return X, y, w, self.S
 
-    def add_gamma_noise(self, X_clean=None, y=None):
-        if X_clean is None:  # should come in pair with y
-            X_clean, y, w, _ = self.sample_xs()
-        X_gnoisy = torch.zeros_like(X_clean)
-
-        # Create two Gamma distribution objects with params tied to
-        # y=1 or -1
-
-        gamma_dist1 = Gamma(
-            concentration=self.gamma_dict["y1"]["ga"], rate=self.gamma_dict["y1"]["gb"]
-        )
-        gamma_dist2 = Gamma(
-            concentration=self.gamma_dict["y2"]["ga"], rate=self.gamma_dict["y2"]["gb"]
-        )
-
-        # TODO@DR I'll have to reason how the seeds for generators go here
-        for i in range(X_clean.shape[0]):
-            if y[i] == 1:
-                gnoise = gamma_dist1.sample((1,))
-            else:  # -1
-                gnoise = gamma_dist2.sample((1,))
-
-            # gamma is multiplicative
-            noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
-
-            # TODO@DR I'm taking off the noise for right now to debug
-            # space-time losses
-            X_gnoisy[i, :, :] += noisy_patches
-            # X_gnoisy[i, :, :] += X_clean[i, :, :]
-
-        # so each instance will have noise from either gamma1 or gamma2 randomly as y is drawn but related to
-        # how the underlying data is generated. Not sure if I want to do this or not.
-        return X_clean, X_gnoisy, y
-
     def add_gaussian_noise(self, X_clean=None, y=None):
         if X_clean is None:  # should come in pair with y
             X_clean, y, w, _ = self.sample_xs()
@@ -282,50 +248,10 @@ dggen = GroupSampler()
 dataset, y, w, partition = dggen.sample_xs()
 print(dataset.shape, y.shape)
 
-# X, Label = dggen.get_X_and_label_unfused(dataset)
-# print(f"X shape {X.shape} and label shape {Label.shape}")
+X, Label = dggen.get_X_and_label_unfused(dataset)
+print(f"X.shape {X.shape}")
 
-# _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
-
-# For Enerdit dev
-_, noisy_d, _ = dggen.add_gaussian_noise(dataset, y)  # this should not be here
-
-print(f"the noisy set {noisy_d.shape}")  # (num_samples, num_patches, flattened patch)
-# In this setup num_patches (D) is tied to patch size (DxD=d)
-
-fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
-
-# print(f"label shape {label.shape} and val {label[0]}") # looks ok
-# print(f"check that last fused patch in teh seq has val 0 {fused_seq[0][-1].shape} and not equal to label {fused_seq[0][-1]} at the same pos") #yeap
-# print(f"fused seq shape {fused_seq.shape}") #(B=20, seq_len=8, patch_dim=2*64=128)
-
-print(f"feature w shape {w.shape}")  # 64 dim vector from d
-
-print(f"partition of indices S {partition}")  # there are 10 groups with 2 elem each
-# we have 8 patches; the partition is of 4 groups of 2 indeces each
-# weach index is in each group changes but in this datagen the group cardinality
-# is always 2
-#  tensor([[0, 1],
-# [3, 4],
-# [7, 2],
-# [5, 6]])
-
-
-def plot_partition(D, partition):
-    plt.figure(figsize=(4, 4))
-    S_matrix = torch.eye(D, D)
-    for x in partition:
-        # print(f"wjat is x in S {x[1]}")
-        S_matrix[x[0], x[1]] = 1 / 2
-        S_matrix[x[1], x[0]] = 1 / 2
-    plt.matshow(S_matrix, cmap="Greys")
-    plt.axis("off")
-    plt.savefig(f"src/enerdit/dev/one_str_dev.png")
-
-
-plot_partition(8, partition)
-
-# #############Get train and test loaders here for dev
+##########Get batches first
 
 
 class DatasetWrapper(Dataset):
@@ -397,17 +323,13 @@ def grouped_data_train_test_split_util(
 # a separate test dataset like in jelassi for the grouped case
 
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
-    fused_seq, label, 0.2, as_torch=True, rng=None
+    X, Label, 0.2, as_torch=True, rng=None
 )
 
 # print(x_train.shape)
 # print(y_train.shape)
 batch_size = 3
-
 train_size = x_train.shape[0]
-# print(f"For dev: train_size {train_size} and test size {x_test.shape[0]} and xtrain shape {x_train.shape}")
-# train_size 16 and test size 4
-# xtrain shape for dev torch.Size([16, 128, 8])
 
 train_dataset = DatasetWrapper(x_train, y_train)
 test_dataset = DatasetWrapper(x_test, y_test)
@@ -418,3 +340,33 @@ train_loader = DataLoader(
 test_loader = DataLoader(
     test_dataset, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True
 )
+
+
+def normalize(inputs, target):
+    in_min, in_max = torch.min(inputs), torch.max(inputs)
+    target_min, target_max = torch.min(target), torch.max(target)
+    range = in_max - in_min
+    # make it safe
+    return (inputs - in_min) / (range + torch.finfo(inputs.dtype).eps), (
+        target - target_min
+    ) / (torch.finfo(target.dtype).eps + target_max - target_min)
+
+
+for i, data in enumerate(train_loader):
+    inputs, target = data
+    print(f"inputs shape {inputs.shape} and target shape {target.shape}")
+    # before noise
+    # inputs shape torch.Size([3, 64, 8]) and target shape torch.Size([3, 128])
+
+    # normalize to [0, 1]
+    inputs, target = normalize(inputs, target)
+    b, pdim, seq_len = inputs.shape
+
+    # THis will be the t to generate noise for the seq and to use in loss and in time embed
+    t = torch.exp(
+        torch.empty(seq_len).uniform_(math.log(10 ** (-9)), math.log(10**3))
+    )
+
+    # get z for this batch
+    z = torch.randn_like(inputs)
+    print(f"z shape {z.shape}")
