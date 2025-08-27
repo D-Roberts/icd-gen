@@ -77,15 +77,7 @@ class Trainer:
     ):
         pass
 
-    def train_step(
-        self,
-        model,
-        xs,
-        ys,
-        optimizer,
-        st_loss,
-        t,
-    ):
+    def train_step(self, model, xs, ys, z, optimizer, st_loss, t, dev_loss):
         optimizer.zero_grad()
 
         qenergy, space_score, time_score = model(xs, t)
@@ -93,27 +85,27 @@ class Trainer:
         space_score = torch.permute(space_score, (0, 2, 1))
 
         # FOr l1 or l2 loss calculation - use last score on the query token
-        loss_mse_spaces = st_loss(
-            space_score[:, :, -1], ys[:, :64]
-        )  # use only the non-zero
-        # and on time score
-        loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
-        loss = loss_mse_spaces + loss_mse_timesc
+        # loss_mse_spaces = st_loss(
+        #     space_score[:, :, -1], ys[:, :64]
+        # )  # use only the non-zero
+        # # and on time score
+        # loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
+        # loss = loss_mse_spaces + loss_mse_timesc
 
         # here in code the label y is the clean
-        # loss, loss_sp, loss_t = st_loss(
-        #     space_score, time_score, xs, ys, t, return_both=True
-        # )
+        loss, loss_sp, loss_t = st_loss(space_score, time_score, z, t, return_both=True)
 
-        # print(f"in train step print space loss {loss_sp}")
-        # print(f"in train step print time loss {loss_t}")
+        # loss =dev_loss(torch.mean(space_score[:,:, -1], dim=-1), torch.mean(ys, dim=1))
+        # it is learning with the target y that's it.
+
+        #######################################
 
         loss.backward()
         optimizer.step()
 
         return (
-            # loss_sp.detach().item(),
-            # loss_t.detach().item(),  # for debug
+            loss_sp.detach().item(),
+            loss_t.detach().item(),  # for debug
             loss.detach().item(),
             qenergy.detach()
             .cpu()
@@ -138,7 +130,7 @@ trainer = Trainer()
 
 model = EnerdiT(
     context_len=8,
-    d_model=4,
+    d_model=32,
     input_dim=128,
     cf1_init_value=0.5,  # This is just to init - but param is learned.
     num_heads=1,
@@ -149,7 +141,7 @@ model = EnerdiT(
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
-    lr=0.001,
+    lr=0.0001,
     betas=(
         0.9,
         0.98,
@@ -164,41 +156,13 @@ class TimeLoss(nn.Module):
         super(TimeLoss, self).__init__()
         pass
 
-    def forward(self, preds, x, y, tt):
+    def forward(self, time_score, z, t):
         """take average over minibatch in this implementation
         this is for one time t;
 
-        same as in space loss up until z calculation
+        only on the query
         """
-        bs, d, seq_len = x.shape
-        # d is the patch size; going with the patch rather than the double patch here
-        d = d // 2
-        # extract the non-zero part only and the last token which is query noisy
-        query = x[:, :d, -1]
-        clean = y[:, :d]
-        # print(f"in t loss query shape {query.shape}")
-        # print(f"in sp loss clean shape {clean.shape}")
-
-        # TODO@DR: would be best to get the z directly
-
-        # t for this seq query last token
-        t = tt[-1]
-
-        # the noise
-        z = (query - clean) * (1 / math.sqrt(t))
-        # print(f"z in time loss when no noise {z}") # yes 0
-
-        # print(f"preds shape in time loss {preds.shape}") #(B, seq_len)
-        time_score = preds[:, -1]  # this extracts time score for query
-        # print(f"time score when zero noise {time_score}") # around constant on some number - I suppose maybe it makes sense
-        # based on inits
-
-        # Added an average pooling to time head prediction layer so that it is
-        # scalar since U is scalar and so is t
-        # For right now - take the mean of the time score instead of
-        # predicting a scalar directly TODO@DR reconsider
-
-        # print(f"time score shape {time_score.shape}") # (B,)
+        bs, d = z.shape
 
         term1 = (t / d) * time_score
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
@@ -206,10 +170,9 @@ class TimeLoss(nn.Module):
         term2 = 0.5 * (1 - znormedsq / d)
 
         ltime = (term1 - term2) ** 2
-
         # print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
         # mean over minibatch
-        return ltime.mean()
+        return torch.mean(ltime)
 
 
 class SpaceLoss(nn.Module):
@@ -217,9 +180,10 @@ class SpaceLoss(nn.Module):
         super(SpaceLoss, self).__init__()
         pass
 
-    def forward(self, preds, x, y, tt):
+    def forward(self, sp, z, t):
         """
         use t from query last token. tt is the t from uniform on seq
+        sp and z correspond to query token
 
         """
         # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
@@ -230,32 +194,17 @@ class SpaceLoss(nn.Module):
 
         # get z from clean query, noisy query and t (assume t is not 0, which
         # should not be in training)
-        bs, d, seq_len = x.shape
-        # d is the patch size; going with the patch rather than the double patch here
-        d = d // 2
-        # extract the non-zero part only and the last token which is query noisy
-        query = x[:, :d, -1]
-        clean = y[:, :d]
-        # print(f"query shape {query.shape}")
-        # print(f"clean shape {clean.shape}")
+        bs, d = z.shape
 
-        # t for this seq query
-        t = tt[-1]
-
-        # the noise
-        z = (query - clean) * (1 / torch.sqrt(t))
-
-        # the space head pred score
-        sp = preds[:, :, -1]
         # space loss term1 (as in eq 43); non neg and non-zero
-        term1 = math.sqrt(t / d) * sp
-        term2 = z / math.sqrt(d)
+        term1 = torch.sqrt(t / d) * sp
+        term2 = z / torch.sqrt(torch.tensor(d))
         subtract = term1 - term2
         # print(f"in space loss subtr shape {subtract.shape}") #3, 64
         lspace = (torch.norm(subtract, p=2, dim=1)) ** 2
         # take norm over the input dim
         # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
-        return lspace.mean()
+        return torch.mean(lspace)
 
 
 class STLoss(nn.Module):
@@ -266,9 +215,11 @@ class STLoss(nn.Module):
         self.spacel = SpaceLoss()
         self.timel = TimeLoss()
 
-    def forward(self, space_scores, time_scores, sequence, label, t, return_both=True):
-        spl = self.spacel(space_scores, sequence, label, t)
-        tl = self.timel(time_scores, sequence, label, t)
+    def forward(self, space_scores, time_scores, z, t, return_both=True):
+        # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
+        spl = self.spacel(space_scores[:, :, -1], z[:, :, -1], t[-1])
+        tl = self.timel(time_scores[:, -1], z[:, :, -1], t[-1])
+
         stl = spl + tl
 
         if return_both:
@@ -310,9 +261,8 @@ stloss_dev = STLoss()
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 60
+epochs = 30
 train_size = len(train_loader)
-
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
 
@@ -337,35 +287,40 @@ for epoch in range(epochs):
         # in the mini batch and will be used in noisy and in loss calculation. Must see about this.
         # maybe randomize per instance.
 
-        # loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
-        #     model,
-        #     inputs.to(device),
-        #     target.to(device),
-        #     optimizer,
-        #     stloss_dev,
-        #     t.to(
-        #         device
-        #     ),  # t will be time embedded and added to the patch and space embeddings
-        # )
+        loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
+            model,
+            xs.to(device),
+            target.to(device),
+            z.to(device),
+            optimizer,
+            stloss_dev,
+            t.to(
+                device
+            ),  # t will be time embedded and added to the patch and space embeddings
+            loss_func_dev,
+        )
         # # TODO@DR: after seeing learning with this loss, experiment with the
         # # energy regularizer too but not until loss goes down as is
 
         # test after time embeds with l1 on space score
-        loss, energy, sh, th = trainer.train_step(
-            model,
-            xs.to(device),
-            target.to(device),
-            optimizer,
-            loss_func_dev,
-            t.to(
-                device
-            ),  # t will be time embedded and added to the patch and space embeddings
-        )
+        # loss, energy, sh, th = trainer.train_step(
+        #     model,
+        #     xs.to(device),
+        #     target.to(device),
+        #     optimizer,
+        #     loss_func_dev,
+        #     t.to(
+        #         device
+        #     ),  # t will be time embedded and added to the patch and space embeddings
+        # )
 
         # print(f"energy on query {energy.shape}") # this is for the minibatch
         # so let's just log the first
 
+        # print(f"space loss is {loss_sp}\n")
+        # print(f"time loss is {loss_t}\n")
         print(f"total loss is {loss}\n")
+
         epoch_loss += loss
         batch_count += 1
 
@@ -379,9 +334,9 @@ for epoch in range(epochs):
         #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
         # )
 
-        exp.log_metrics({"batch loss": loss}, step=batch_count)
-        # exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
-        # exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+        exp.log_metrics({"batch loss with mse on sp": loss}, step=batch_count)
+        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
         # exp.log_metrics({"Dev train spacehead-only batch query -energy=logp": -energy[:,-1]}, step=batch_count)
         # exp.log_metrics({"Dev train spacehead-only batch p": torch.exp(-energy)}, step=batch_count)
@@ -408,8 +363,8 @@ for epoch in range(epochs):
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
     # stop for debug
-    # if batch_count == 3:
-    #     break
+    if batch_count == 3:
+        break
 
 
 ################so when I train with no noise data, the losses have these non-zero values
