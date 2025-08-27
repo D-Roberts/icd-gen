@@ -123,10 +123,10 @@ class EnerdiTFinal(nn.Module):
         sp_pred = sh[:, :, -1]  # the space head should already have d // 2
 
         # print(f"sp_pred in energy {sp_pred.shape}")
-        # print(f"th shape in energy {th.shape}") #3, 8, 64
+        # print(f"th shape in energy {th.shape}") #(B, seqlen)
         # should be scalar according to theory
-        th_pred = th[:, -1, :].mean(dim=-1)
-        # print(f"th_pred shape in energy {th_pred.shape}")
+        th_pred = th[:, -1]
+        # print(f"th_pred shape in energy {th_pred.shape}") #(B,)
 
         # This is not right because th_pred is a scalar
         # sc = sh - th * cf1
@@ -188,7 +188,11 @@ class TimeHead(nn.Module):
         x = self.silu(x)
         x = self.time_head(x)
 
-        return x
+        # print("shape of x as it comes out of time head ", x.shape)
+        # (B, seq_len, patch dim)
+        # add an average pooling layer in time head since it is supposed
+        # to be a U partial wrt t, a scalar
+        return x.mean(-1)
 
 
 class SpaceHead(nn.Module):

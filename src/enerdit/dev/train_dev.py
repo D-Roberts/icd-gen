@@ -92,8 +92,8 @@ class Trainer:
         # Use the ys label right now with l1 loss
         # For architecture dev
 
-        preds_sp = torch.permute(space_score, (0, 2, 1))
-        preds_t = torch.permute(time_score, (0, 2, 1))
+        space_score = torch.permute(space_score, (0, 2, 1))
+        # preds_t = torch.permute(time_score, (0, 2, 1))
 
         # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
 
@@ -101,8 +101,8 @@ class Trainer:
         # loss = loss_func(preds[:, :, -1], ys)
 
         # here in code the label y is the clean
-        loss_sp = space_loss(preds_sp, xs, ys, t=t)
-        loss_t = time_loss(preds_t, xs, ys, t=t)
+        loss_sp = space_loss(space_score, xs, ys, t=t)
+        loss_t = time_loss(time_score, xs, ys, t=t)
 
         loss = loss_sp + loss_t
         print(f"in train step print space loss {loss_sp}")
@@ -185,8 +185,10 @@ class TimeLoss(nn.Module):
         # the noise
         z = (query - clean) * (1 / math.sqrt(t))
         # print(f"z shape in time loss {z.shape}")
-        time_score = preds[:, :, -1].mean(dim=-1)  # As of right now the time head
-        # learns the same shape score as space score but it should be
+
+        # print(f"preds shape in time loss {preds.shape}") #(B, seq_len)
+        time_score = preds[:, -1]  # this extracts time score for query
+        # Added an average pooling to time head prediction layer so that it is
         # scalar since U is scalar and so is t
         # For right now - take the mean of the time score instead of
         # predicting a scalar directly TODO@DR reconsider
@@ -201,7 +203,6 @@ class TimeLoss(nn.Module):
         ltime = (term1 - term2) ** 2
 
         # print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
-
         # mean over minibatch
         return ltime.mean()
 
@@ -282,7 +283,7 @@ def test_eval(model, test_loader, loss_func_dev):
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 30
+epochs = 1
 train_size = len(train_loader)
 
 
