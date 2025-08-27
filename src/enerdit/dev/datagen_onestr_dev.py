@@ -356,14 +356,8 @@ train_dataset = DatasetWrapper(x_train, y_train)
 test_dataset = DatasetWrapper(x_test, y_test)
 
 train_loader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    num_workers=0,
+    train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True
 )
 test_loader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    num_workers=0,
+    test_dataset, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True
 )

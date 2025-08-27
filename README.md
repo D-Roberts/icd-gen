@@ -1,6 +1,6 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list (TODO@DR: stop adding self-todos, you aren't staff eng in tech now)
+### TODO@DR running list 
 
     *-1. Code up the Enerdit: priority 1. 
         - WIP
@@ -13,7 +13,14 @@
                 - next - need to make debug dataset small and easy a la Karpathy but not quite (one batch is too little)
                 [done]
             - 2. Dev new loss.
-            [DR self talk: this stuff is so cool I don't even care if it gets published that much anymore. Ok I do care but still.]
+                - debug both space and loss expression
+                - need to replace the gamma noise right now with the gaussian
+                - not sure what the t schedule to be for the sequence 
+                gaussian. Right now the gamma is tied to the structure config
+                with the groups. Sampling t from tmin tmax won't preserve that.
+                Not sure if that's important or not.
+                
+           
 
     *0. Code for models on the new patch structure datagen (priority 2)
 

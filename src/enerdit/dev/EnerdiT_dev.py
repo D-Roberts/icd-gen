@@ -98,7 +98,7 @@ class EnerdiTFinal(nn.Module):
         super(EnerdiTFinal, self).__init__()
         pass
 
-    def forward(self, sh, th, y, cf1):
+    def forward(self, sh, th, noisy, cf1):
         """return energy for each token in context as well as
         query token (last) TODO@DR reason about the zero padding
 
@@ -115,6 +115,22 @@ class EnerdiTFinal(nn.Module):
 
         return : energy for each token in context and the query token
         """
+        # only use the non-zero portion of the noisy query
+
+        noisy = torch.permute(noisy, (0, 2, 1))
+        sh = torch.permute(sh, (0, 2, 1))
+        print(f"in energy calculation noisy shape {noisy.shape}")
+        print(f"in energy calculation space score shape {sh.shape}")
+
+        bs, d, seq_len = noisy.shape
+        d = d // 2
+
+        # TODO@DR reason again if the first part is the non-zero one
+        query = noisy[:, :d, -1]
+        sp_pred = sh[:, :, -1]  # the space head should already have d // 2
+
+        print(f"sp_pred in energy {sp_pred.shape}")
+        print(f"th shape in energy {th.shape}")
 
         # TODO@DR: will have to see about shapes and signs
         # sc = sh - th * cf1
@@ -123,7 +139,7 @@ class EnerdiTFinal(nn.Module):
         # energy = 0.5 * torch.sum(sc * y, dim=(-1))
 
         # let's see first with only space head
-        energy = 0.5 * torch.sum(sh * y, dim=(-1))
+        energy = 0.5 * torch.sum(sp_pred * query, dim=(-1))
 
         return energy
 
@@ -153,10 +169,6 @@ class PreHead(nn.Module):
         x = self.silu(x)
         x = self.prehead_layer(x)
         return x
-
-
-# TODO@DR: I'll just do them separatelly and will see what if
-# anything different in each
 
 
 class TimeHead(nn.Module):
@@ -285,9 +297,10 @@ class EnerdiT(nn.Module):
 
         self.prehead_linear = PreHead(context_len, d_model)
 
-        # a kind of unembed
-        self.time_head = TimeHead(d_model, input_dim, context_len)
-        self.space_head = SpaceHead(d_model, input_dim, context_len)
+        # a kind of unembed; aim to use only on the non-zero part of
+        # the query and clean label
+        self.time_head = TimeHead(d_model, input_dim // 2, context_len)
+        self.space_head = SpaceHead(d_model, input_dim // 2, context_len)
 
         # self.pre_init() #TODO@DR see later about custom init - right now is hurting
 
@@ -348,10 +361,7 @@ class EnerdiT(nn.Module):
         x = self.prehead_linear(x)
         space_score = self.space_head(x)
         time_score = self.time_head(x)  # the time head is the same shape now
-        # print(f"th is now {time_score.shape}")
-
-        # TODO@DR: what shapes should the scores be? Well this will
-        # be determined in the loss###########################
+        # so take mean of it in energy since it should be a scalar
 
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens
