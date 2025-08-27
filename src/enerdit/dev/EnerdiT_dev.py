@@ -59,7 +59,7 @@ class PatchEmbedding(nn.Module):
 # this is the more standard sin pos embed; diff a bit from dit
 # I decided to call them Space Embeddings. Seem to me more apt
 # Since Pos was from language really
-class SinusoidalSpaceEmbedding(nn.Module):
+class SpaceEmbedding(nn.Module):
     def __init__(self, d_model, max_len=200):
         super().__init__()
         se = torch.zeros(max_len, d_model)  # (seq_len, d_model)
@@ -80,12 +80,25 @@ class SinusoidalSpaceEmbedding(nn.Module):
         return self.se[:, : x.size(1)]
 
 
+class TimeEmbedding(nn.Module):
+    """We just have to have them."""
+
+    def __init__(
+        self,
+    ):
+        super().__init__()
+        pass
+
+    def forward(self, x):
+        pass
+
+
 """
 EnerdiT archi and buildinblocks.
 
 This will not be a state of the art scale bc of low on time.
 
-I will then have to find ways to train it faster and with 
+I will then have to find ways to train it /make it work faster and with 
 less compute / one GPU bc of low on time to deadline.
 
 """
@@ -279,7 +292,7 @@ class EnerdiT(nn.Module):
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
         self.patch_embed = PatchEmbedding(input_dim, d_model)
-        self.space_embed = SinusoidalSpaceEmbedding(d_model, context_len)
+        self.space_embed = SpaceEmbedding(d_model, context_len)
 
         ######################################Before this - inputs embedding
 

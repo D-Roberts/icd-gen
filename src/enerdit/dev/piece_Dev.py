@@ -39,7 +39,7 @@ print(
 
 
 ########################Add Space Embed
-class SinusoidalSpaceEmbedding(nn.Module):
+class SpaceEmbedding(nn.Module):
     def __init__(self, d_model, max_len=200):
         super().__init__()
         # TODO@DR check for correctness again
@@ -75,7 +75,7 @@ class SinusoidalSpaceEmbedding(nn.Module):
 
 
 # putting an index on the full sequence including the query last token; so max_len in dev is 8
-space_embed_layer = SinusoidalSpaceEmbedding(d_model=32, max_len=8)
+space_embed_layer = SpaceEmbedding(d_model=32, max_len=8)
 
 print(f"space embed layer {space_embed_layer}")
 

@@ -82,29 +82,25 @@ class Trainer:
         xs,
         ys,
         optimizer,
-        space_loss,
-        time_loss,
+        st_loss,
         t=1,
     ):
         optimizer.zero_grad()
 
         qenergy, space_score, time_score = model(xs)
-        # Use the ys label right now with l1 loss
-        # For architecture dev
 
         space_score = torch.permute(space_score, (0, 2, 1))
-        # preds_t = torch.permute(time_score, (0, 2, 1))
 
+        # Used the ys label right now with l1 loss for architecture dev
         # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
-
         # FOr l1 loss calculation - use last score on the query token
         # loss = loss_func(preds[:, :, -1], ys)
 
         # here in code the label y is the clean
-        loss_sp = space_loss(space_score, xs, ys, t=t)
-        loss_t = time_loss(time_score, xs, ys, t=t)
+        loss, loss_sp, loss_t = st_loss(
+            space_score, time_score, xs, ys, t, return_both=True
+        )
 
-        loss = loss_sp + loss_t
         print(f"in train step print space loss {loss_sp}")
         print(f"in train step print time loss {loss_t}")
 
@@ -122,12 +118,12 @@ class Trainer:
             time_score.detach(),
         )
 
-    def train(
+    def train_loop(
         self,
     ):
         pass
 
-    def eval(
+    def eval_step(
         self,
     ):
         pass
@@ -184,10 +180,13 @@ class TimeLoss(nn.Module):
 
         # the noise
         z = (query - clean) * (1 / math.sqrt(t))
-        # print(f"z shape in time loss {z.shape}")
+        # print(f"z in time loss when no noise {z}") # yes 0
 
         # print(f"preds shape in time loss {preds.shape}") #(B, seq_len)
         time_score = preds[:, -1]  # this extracts time score for query
+        # print(f"time score when zero noise {time_score}") # around constant on some number - I suppose maybe it makes sense
+        # based on inits
+
         # Added an average pooling to time head prediction layer so that it is
         # scalar since U is scalar and so is t
         # For right now - take the mean of the time score instead of
@@ -252,10 +251,30 @@ class SpaceLoss(nn.Module):
         return lspace.mean()
 
 
+class STLoss(nn.Module):
+    """with space and time heads losses together"""
+
+    def __init__(self):
+        super(STLoss, self).__init__()
+        self.spacel = SpaceLoss()
+        self.timel = TimeLoss()
+
+    def forward(self, space_scores, time_scores, sequence, label, t, return_both=True):
+        spl = self.spacel(space_scores, sequence, label, t)
+        tl = self.timel(time_scores, sequence, label, t)
+        stl = spl + tl
+
+        if return_both:
+            return stl, spl, tl
+        else:
+            return stl
+
+
 loss_func_dev = nn.L1Loss()
 
-spaceloss_dev = SpaceLoss()
-timeloss_dev = TimeLoss()
+# spaceloss_dev = SpaceLoss()
+# timeloss_dev = TimeLoss()
+stloss_dev = STLoss()
 
 
 # add a test
@@ -295,20 +314,30 @@ model.to(device)
 batch_count = 0
 energies = []
 for epoch in range(epochs):
+    print("***********STLoss Dev**********No Noise currently")
     print(f"***********Epoch is {epoch}")
     epoch_loss = 0.0
     for i, data in enumerate(train_loader, 0):
         inputs, target = data
+
+        # print(f"one batch inputs are {inputs[0]} of shape {inputs[0].shape}") #[128, 8] so (2Xpatch dim, seqlen) for shape as expected
+        # print(f"one batch label is {target[0]} of shape {target[0].shape}") # as expected
+        # print(f"non zero part of label {target[0][:64]}") #as expected
+        # print(f"zero part of label {target[0][64:]}") #as expected
+        # print(f"one batch inputs first token {inputs[0][:, 0]} of shape {inputs[0][:, 0].shape}") #all nonzero, shape is (2Xpatch dim) ok
+        # print(f"one batch inputs last token {inputs[0][:, -1]} of shape {inputs[0][:, -1].shape}") #half zeros, shape is (2Xpatch dim) ok
+        # print(f"bec I took off noise last token and label should be equal {inputs[0][:, -1] == target[0]}") # yes, as expected
 
         loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
             model,
             inputs.to(device),
             target.to(device),
             optimizer,
-            spaceloss_dev,
-            timeloss_dev,
-            t=1,
+            stloss_dev,
+            t=1,  # t is always 1 now
         )
+        # TODO@DR: after seeing learning with this loss, experiment with the
+        # energy regularizer too but not until loss goes down as is
 
         # print(f"energy on query {energy.shape}") # this is for the minibatch
         # so let's just log the first
@@ -336,12 +365,13 @@ for epoch in range(epochs):
         # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 
         # CHeck that the weights are updating
-        # for name, param in model.named_parameters():
-        #     print(name)
-        #     # if name == "space_head.space_head.weight": # yes weights are changing
-        #     print(f"param is {param} and name is {name} ")
+    #     for name, param in model.named_parameters():
+    #         print(name)
+    #         if param.grad is not None:
+    #             # if name == "space_head.space_head.weight": # yes weights are changing
+    #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
-    # # scheduler.step()  # step the learning rate; if not cosine then no scheduler
+    # # # scheduler.step()  # step the learning rate; if not cosine then no scheduler
     # print("\tlast LR:", scheduler.get_last_lr())
 
     # eval once per epoch in dev
@@ -352,6 +382,17 @@ for epoch in range(epochs):
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
+
+    # stop for debug
+    if batch_count == 3:
+        break
+
+
+################so when I train with no noise data, the losses have these non-zero values
+# in train step print space loss 0.04604632779955864
+# in train step print time loss 0.24885523319244385
+# total loss is 0.2949015498161316
+
 
 # print(len(energies))
 # print(energies)

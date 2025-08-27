@@ -167,23 +167,28 @@ class GroupSampler(DataSampler):
 
         # Create two Gamma distribution objects with params tied to
         # y=1 or -1
-        gamma_dist1 = Gamma(
-            concentration=self.gamma_dict["y1"]["ga"], rate=self.gamma_dict["y1"]["gb"]
-        )
-        gamma_dist2 = Gamma(
-            concentration=self.gamma_dict["y2"]["ga"], rate=self.gamma_dict["y2"]["gb"]
-        )
+
+        # gamma_dist1 = Gamma(
+        #     concentration=self.gamma_dict["y1"]["ga"], rate=self.gamma_dict["y1"]["gb"]
+        # )
+        # gamma_dist2 = Gamma(
+        #     concentration=self.gamma_dict["y2"]["ga"], rate=self.gamma_dict["y2"]["gb"]
+        # )
 
         # TODO@DR I'll have to reason how the seeds for generators go here
         for i in range(X_clean.shape[0]):
-            if y[i] == 1:
-                gnoise = gamma_dist1.sample((1,))
-            else:  # -1
-                gnoise = gamma_dist2.sample((1,))
+            #     if y[i] == 1:
+            #         gnoise = gamma_dist1.sample((1,))
+            #     else:  # -1
+            #         gnoise = gamma_dist2.sample((1,))
 
             # gamma is multiplicative
-            noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
-            X_gnoisy[i, :, :] += noisy_patches
+            # noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
+
+            # TODO@DR I'm taking off the noise for right now to debug
+            # space-time losses
+            # X_gnoisy[i, :, :] += noisy_patches
+            X_gnoisy[i, :, :] += X_clean[i, :, :]
 
         # so each instance will have noise from either gamma1 or gamma2 randomly as y is drawn but related to
         # how the underlying data is generated. Not sure if I want to do this or not.
@@ -218,7 +223,12 @@ class GroupSampler(DataSampler):
             :, -1
         ] = 0.0  # 0 out last patch where the query is on the clean supervision
 
+        # TODO@DR: recheck this padding logic, seems something is
+        # different as I turn the noise off.
+
         # want to have dirty first in fused
+        # print(f"check that the noise is turned off {X_clean == X_dirty}")
+
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
 
         # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different
