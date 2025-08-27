@@ -2,16 +2,11 @@
 
 ### TODO@DR running list 
 
-    *-1. Code up the Enerdit: priority 1. 
+    *-1. Mke the Enerditork w: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
-        - Start debug step-by-step:
-            - 1. Debug archi with some known loss. [WIP]
-                - add some init to begin with
-                - use MAE on space score and clean label only [done]
-                - retain only emebd and linears [done]
-                - next - need to make debug dataset small and easy a la Karpathy but not quite (one batch is too little)
-                [done]
+        - Start dev step-by-step:
+           
             - 2. Dev new loss.
                 - need to replace the gamma noise right now with the gaussian
                 - not sure what the t schedule to be for the sequence 
@@ -20,7 +15,7 @@
                 Not sure if that's important or not.
                 - clip clean to [0, 1]
                 - debug both space and loss expression [done first pass - better shape technically but not learning the current datagen (while
-                MAE was on just the clean and noisy query)]
+                MAE was, on just the clean and noisy query)]
                 - be sure extracting the right non-padding portion of query
                 and label too
                 - Priority 1: the right noise schedule to get the t accross

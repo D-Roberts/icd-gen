@@ -152,49 +152,6 @@ class Trainer:
 # ys = torch.randn(2, 1, requires_grad=True)
 
 
-class TimeLoss(nn.Module):
-    def __init__(self, d_model, reduction="mean"):
-        super(TimeLoss, self).__init__()
-        self.d_model = d_model
-
-    def forward(self, preds, x, y, t=1):
-        """take average over minibatch in this implementation
-        this is for one time t;
-
-        TODO@DR: reason how to handle t in my
-        case.
-
-        X: (b, fused_patch_dim) this is the patch we are predicting on
-        y: this is the target
-        """
-
-        dUt = 0.5 * ((self.d_model - torch.norm(y - x, p=2) ** 2)).mean()
-
-        # Eq 5: TODO@DR: one mean or two means now?
-
-        ltsm = ((preds - dUt) ** 2).mean()
-        return ltsm
-
-
-class SpaceLoss(nn.Module):
-    def __init__(self):
-        super(SpaceLoss, self).__init__()
-        pass
-
-    def forward(self, preds, x, y, t=1):
-        """
-        Equation 3; again not sure how will treat time step here
-        since query is only one time step.
-
-        """
-        duy = (y - x).mean()
-
-        # TODO@DR: figure out what to do about the t in my setup
-        lspace = ((torch.norm(preds - duy, p=2)) ** 2).mean()
-
-        return lspace
-
-
 trainer = Trainer()
 
 

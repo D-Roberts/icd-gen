@@ -42,7 +42,7 @@ class PatchEmbedding(nn.Module):
         super().__init__()
 
         # aim to embed the clean and noisy together for dim reduction
-        # alternatively I could add the position embed directly in the
+        # alternatively I could add the space embed directly in the
         # 200 dim
 
         # set bias to zero
@@ -57,29 +57,27 @@ class PatchEmbedding(nn.Module):
 
 
 # this is the more standard sin pos embed; diff a bit from dit
-class SinusoidalPositionalEmbedding(nn.Module):
+# I decided to call them Space Embeddings. Seem to me more apt
+# Since Pos was from language really
+class SinusoidalSpaceEmbedding(nn.Module):
     def __init__(self, d_model, max_len=200):
         super().__init__()
-        pe = torch.zeros(max_len, d_model)  # (seq_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        se = torch.zeros(max_len, d_model)  # (seq_len, d_model)
+        spatial = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )  # double the d_model size
 
-        pe[:, 0::2] = torch.sin(
-            position * div_term
-        )  # start index at 0 with step size 2
+        se[:, 0::2] = torch.sin(spatial * div_term)  # start index at 0 with step size 2
         # print("pe[:, 0::2] and pe", pe[:, 0::2].shape, pe)
-        pe[:, 1::2] = torch.cos(
-            position * div_term
-        )  # start index at 1 with step size 2
-        self.register_buffer("pe", pe.unsqueeze(0))  # Add a batch dimension
+        se[:, 1::2] = torch.cos(spatial * div_term)  # start index at 1 with step size 2
+        self.register_buffer("se", se.unsqueeze(0))  # Add a batch dimension
 
     def forward(self, x):
         # x is the sequence of patch embeddings, shape (batch_size, seq_len, d_model)
-        # We need to add positional embeddings to each element in the sequence
+        # We need to add space embeddings to each element in the sequence
 
-        return self.pe[:, : x.size(1)]
+        return self.se[:, : x.size(1)]
 
 
 """
@@ -277,7 +275,7 @@ class EnerdiT(nn.Module):
         # Can't use the Patch embedder from timm bc my patches already come
         # in patchified and fused.
         self.patch_embed = PatchEmbedding(input_dim, d_model)
-        self.pos_embed = SinusoidalPositionalEmbedding(d_model, context_len)
+        self.space_embed = SinusoidalSpaceEmbedding(d_model, context_len)
 
         ######################################Before this - inputs embedding
 
@@ -313,19 +311,19 @@ class EnerdiT(nn.Module):
 
         # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
         # with this
-        def lin_init(module):
-            if isinstance(module, nn.Linear):
-                # TODO@DR: reconsider later: not learning well with this below at this time in dev
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
+        # def lin_init(module):
+        #     if isinstance(module, nn.Linear):
+        #         # TODO@DR: reconsider later: not learning well with this below at this time in dev
+        #         nn.init.xavier_uniform_(module.weight)
+        #         if module.bias is not None:
+        #             nn.init.constant_(module.bias, 0)
 
-        self.apply(lin_init)
+        # self.apply(lin_init)
 
         # zero out out layer on the heads TODO@DR: think this again
 
-        nn.init.constant_(self.space_head.space_head.bias, 0)
-        nn.init.constant_(self.time_head.time_head.bias, 0)
+        # nn.init.constant_(self.space_head.space_head.bias, 0)
+        # nn.init.constant_(self.time_head.time_head.bias, 0)
 
         # TODO@DR: reconsider later: not learning well with this below at this time
         # nn.init.constant_(self.space_head.space_head.weight, 0)
@@ -346,11 +344,11 @@ class EnerdiT(nn.Module):
         # (b, context, dim)
 
         patch_embed = self.patch_embed(x)
-        pos_embed = self.pos_embed(
+        space_embed = self.space_embed(
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
 
-        x = patch_embed + pos_embed
+        x = patch_embed + space_embed
 
         ##################Input normalization and embedding area over
 
