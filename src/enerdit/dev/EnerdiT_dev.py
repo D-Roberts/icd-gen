@@ -80,17 +80,60 @@ class SpaceEmbedding(nn.Module):
         return self.se[:, : x.size(1)]
 
 
+# inspired from https://github.com/facebookresearch/DiT/blob/main/models.py#L26
 class TimeEmbedding(nn.Module):
-    """We just have to have them."""
+    """We just have to have them.
+
+    logt will be drawn from a U(logtmin, logtmax), will tmin = 10**-9 and tmax = 10**3
+
+    each token in sequence will have an associated t. embed to same d_model and add to the
+    pathc and space embeddings.
+
+    embeddings are sin cos
+
+    t is a seq len vector in this formulation with a context prompt.
+    (as of right now)
+
+    """
 
     def __init__(
-        self,
+        self, d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
     ):
         super().__init__()
-        pass
+        self.time_embedder = nn.Sequential(
+            nn.Linear(frequency_embedding_size, d_model, bias=True),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model, bias=True),
+        )
+        self.frequency_embedding_size = frequency_embedding_size
+        self.mint = mint
+        self.maxt = maxt
 
-    def forward(self, x):
-        pass
+    @staticmethod
+    def time_embedding(t, dim, mint, maxt):
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(maxt - mint)
+            * torch.arange(start=0, end=half, dtype=torch.float32)
+            / half
+        ).to(
+            device=t.device
+        )  # the device will need to be given
+        args = t[:, None].float() * freqs[None]  # for each t in the t tensor
+        # print(args)
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            embedding = torch.cat(
+                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
+            )
+        return embedding  # this will be shape (len of t, 256)
+
+    def forward(self, t):
+        t_freq = self.time_embedding(
+            t, self.frequency_embedding_size, self.mint, self.maxt
+        )
+        time_embed = self.time_embedder(t_freq)
+        return time_embed
 
 
 """
@@ -293,6 +336,9 @@ class EnerdiT(nn.Module):
         # in patchified and fused.
         self.patch_embed = PatchEmbedding(input_dim, d_model)
         self.space_embed = SpaceEmbedding(d_model, context_len)
+        self.time_embed = TimeEmbedding(
+            d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
+        )
 
         ######################################Before this - inputs embedding
 
@@ -347,9 +393,11 @@ class EnerdiT(nn.Module):
         # nn.init.constant_(self.time_head.time_head.weight, 0)
         # print(f"am I doing this? {self.time_head.time_head.weight}")
 
-    def forward(self, x):
+    def forward(self, x, t):
         # print("what shape comes the batch into Enerdit ", x.shape)
         b_s, in_d, context_len = x.shape
+
+        assert t.shape[0] == x.shape[-1]
         # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
         # reshape for embedding and dyt
@@ -364,8 +412,9 @@ class EnerdiT(nn.Module):
         space_embed = self.space_embed(
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
+        time_embed = self.time_embed(t)
 
-        x = patch_embed + space_embed
+        x = patch_embed + space_embed + time_embed
 
         ##################Input normalization and embedding area over
 

@@ -137,11 +137,72 @@ print(dyt)
 x = dyt(total_embed)
 print(f"in shape {total_embed.shape} and out shape {x.shape}")
 
-# #############Now to the hard stuff - the loss
+
+class TimeEmbedding(nn.Module):
+    """We just have to have them.
+
+    logt will be drawn from a U(logtmin, logtmax), will tmin = 10**-9 and tmax = 10**3
+
+    each token in sequence will have an associated t. embed to same d_model and add to the
+    pathc and space embeddings.
+
+    embeddings are sin cos
+
+    t is a seq len vector in this formulation with a context prompt.
+    (as of right now)
+
+    """
+
+    def __init__(
+        self, d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
+    ):
+        super().__init__()
+        self.time_embedder = nn.Sequential(
+            nn.Linear(frequency_embedding_size, d_model, bias=True),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model, bias=True),
+        )
+        self.frequency_embedding_size = frequency_embedding_size
+        self.mint = mint
+        self.maxt = maxt
+
+    @staticmethod
+    def time_embedding(t, dim, mint, maxt):
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(maxt - mint)
+            * torch.arange(start=0, end=half, dtype=torch.float32)
+            / half
+        )  # the device will need to be given
+        args = t[:, None].float() * freqs[None]  # for each t in the t tensor
+        print(args)
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            embedding = torch.cat(
+                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
+            )
+        return embedding  # this will be shape (len of t, 256)
+
+    def forward(self, t):
+        t_freq = self.time_embedding(
+            t, self.frequency_embedding_size, self.mint, self.maxt
+        )
+        time_embed = self.time_embedder(t_freq)
+        return time_embed
 
 
-# with space and time heads losses together
-class STLoss(nn.Module):
-    def __init__(self):
-        super(STLoss, self).__init__()
-        pass
+tembed = TimeEmbedding(32, 256, 10 ** (-9), 10**3)
+print(tembed)
+print(
+    tembed.time_embedding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
+)  # 128
+
+t_emb = tembed.forward(torch.tensor([1, 3, 4, 5, 6, 7, 8, 2]))
+
+# print(f"time embeddings for a time tensor {torch.tensor([1, 3, 4])} are {t_emb} of shape {t_emb.shape}")
+# one embedding for each t; and will have 1 t for each token in the sequence
+print(total_embed.shape)
+print(t_emb.shape)
+print(total_embed + t_emb)
+# As of right now time_emb is like space_emb - and it gets added accross the batch so it assumes
+# the same t tensor for each sequence in the batch TODO@DR will have to reason about this setup

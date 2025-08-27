@@ -83,11 +83,11 @@ class Trainer:
         ys,
         optimizer,
         st_loss,
-        t=1,
+        t,
     ):
         optimizer.zero_grad()
 
-        qenergy, space_score, time_score = model(xs)
+        qenergy, space_score, time_score = model(xs, t)
 
         space_score = torch.permute(space_score, (0, 2, 1))
 
@@ -160,12 +160,9 @@ class TimeLoss(nn.Module):
         super(TimeLoss, self).__init__()
         pass
 
-    def forward(self, preds, x, y, t=1):
+    def forward(self, preds, x, y, tt):
         """take average over minibatch in this implementation
         this is for one time t;
-
-        TODO@DR: reason how to handle t in my
-        case.
 
         same as in space loss up until z calculation
         """
@@ -177,6 +174,9 @@ class TimeLoss(nn.Module):
         clean = y[:, :d]
         # print(f"in t loss query shape {query.shape}")
         # print(f"in sp loss clean shape {clean.shape}")
+
+        # t for this seq query
+        t = tt[-1]
 
         # the noise
         z = (query - clean) * (1 / math.sqrt(t))
@@ -211,11 +211,9 @@ class SpaceLoss(nn.Module):
         super(SpaceLoss, self).__init__()
         pass
 
-    def forward(self, preds, x, y, t=1):
+    def forward(self, preds, x, y, tt):
         """
-         not sure how will treat time step here
-        since query is only one time step but it will have a t from
-        noise generation.
+        use t from query last token. tt is the t from uniform on seq
 
         """
         # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
@@ -234,6 +232,9 @@ class SpaceLoss(nn.Module):
         clean = y[:, :d]
         # print(f"query shape {query.shape}")
         # print(f"clean shape {clean.shape}")
+
+        # t for this seq query
+        t = tt[-1]
 
         # the noise
         z = (query - clean) * (1 / math.sqrt(t))
@@ -327,6 +328,14 @@ for epoch in range(epochs):
         # print(f"one batch inputs first token {inputs[0][:, 0]} of shape {inputs[0][:, 0].shape}") #all nonzero, shape is (2Xpatch dim) ok
         # print(f"one batch inputs last token {inputs[0][:, -1]} of shape {inputs[0][:, -1].shape}") #half zeros, shape is (2Xpatch dim) ok
         # print(f"bec I took off noise last token and label should be equal {inputs[0][:, -1] == target[0]}") # yes, as expected
+        b, pdim, seq_len = inputs.shape
+
+        # THis will be the t to generate noise for the seq and to use in loss and in time embed
+        t = torch.exp(
+            torch.empty(seq_len).uniform_(math.log(10 ** (-9)), math.log(10**3))
+        )
+        # print(f"t min max is {torch.round(torch.min(t), decimals=6)} and {torch.round(torch.max(t), decimals=2)}")
+        # t looks ok; so here is the same t tensor for each instance of this minibatch
 
         loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
             model,
@@ -334,7 +343,9 @@ for epoch in range(epochs):
             target.to(device),
             optimizer,
             stloss_dev,
-            t=1,  # t is always 1 now
+            t.to(
+                device
+            ),  # t will be time embedded and added to the patch and space embeddings
         )
         # TODO@DR: after seeing learning with this loss, experiment with the
         # energy regularizer too but not until loss goes down as is
