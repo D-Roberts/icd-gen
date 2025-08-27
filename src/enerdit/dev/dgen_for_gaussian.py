@@ -160,85 +160,18 @@ class GroupSampler(DataSampler):
         # last dim can be viewed as a patch flattened
         return X, y, w, self.S
 
-    def add_gaussian_noise(self, X_clean=None, y=None):
-        if X_clean is None:  # should come in pair with y
-            X_clean, y, w, _ = self.sample_xs()
-        X_gnoisy = torch.zeros_like(X_clean)
-
-        # FOr Enerdit N(0,1)
-
-        # TODO@DR I'll have to reason how the seeds for generators go here
-        for i in range(X_clean.shape[0]):
-            gnoise = torch.randn(1)
-
-            print(f"am I get a z? {gnoise}")
-
-            # gaussian is additive but I need the sqrt here
-            noisy_patches = X_clean[i, :, :] + gnoise.view(-1, 1)
-            # print(f"clean patch vs noisy patch {X_clean[i, :, :]==noisy_patches}")
-
-            # TODO@DR I'm taking off the noise for right now to debug
-            # space-time losses
-            X_gnoisy[i, :, :] += noisy_patches
-            # X_gnoisy[i, :, :] += X_clean[i, :, :]
-
-        # so each instance will have noise from either gamma1 or gamma2 randomly as y is drawn but related to
-        # how the underlying data is generated. Not sure if I want to do this or not.
-        return X_clean, X_gnoisy, y
-
-    def get_fused_sequence(self, X_clean=None, X_dirty=None):
-        # just assume if X_clean given we also have X_dirty
-
-        # TODO@dr I am calling it dirty bc I wonder about other distortions
-        # beside noise; for instance those eigendistortions. Can
-        # I do anything with that? Probably don't have time now.
-        # Also those geometric transformations used for data augmentation
-        # to make image models work better with smaller dataset (eg. in
-        # patch diffusion). Can I repurpose them to create distortions?
-        # Probably but don't have time now.
-
-        if X_clean is None:
-            # X_clean, X_dirty, y = self.add_gamma_noise()
-            X_clean, X_dirty, y = self.add_gaussian_noise()
-
-        # because the last gnoised patch should be the query and
-        # its clean version the label, simply set the last clean
-        # patch in the fused to 0
-
-        # TODO@DR reason through how this padding affects the loss
-        # calculation and the grad and if I need to do sth about it
-
-        patch_dim = X_clean.shape[-1]
-        label = torch.zeros((X_clean.shape[0], X_clean.shape[-1] * 2))
-        label[:, :patch_dim] += X_clean[:, -1]
-
-        X_clean[
-            :, -1
-        ] = 0.0  # 0 out last patch where the query is on the clean supervision
-
-        # TODO@DR: recheck this padding logic, seems something is
-        # different as I turn the noise off.
-
-        # want to have dirty first in fused
-        # print(f"check that the noise is turned off {X_clean == X_dirty}")
-
-        fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
-
-        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different
-
-        return fused_seq, label
-
     def get_X_and_label_unfused(self, X_clean=None):
         """only the x of clean and the label which is the last of x"""
 
         patch_dim = X_clean.shape[-1]
+        print(f"when getting target X clean shape {X_clean.shape}")  # 20, 8, 64
         label = torch.zeros((X_clean.shape[0], X_clean.shape[-1] * 2))
         # the label already has double size
-        label[:, :patch_dim] += X_clean[:, -1]
+        print(f"when getting target label init shape {label.shape}")
 
-        X_clean[
-            :, -1
-        ] = 0.0  # 0 out last patch where the query is on the clean supervision
+        label[:, :patch_dim] += X_clean[:, -1, :]
+
+        print(f"what was X_clean[:, -1]{X_clean[:, -1].shape}")
 
         return X_clean, label
 
@@ -249,7 +182,7 @@ dataset, y, w, partition = dggen.sample_xs()
 print(dataset.shape, y.shape)
 
 X, Label = dggen.get_X_and_label_unfused(dataset)
-print(f"X.shape {X.shape}")
+print(f"X.shape {X.shape} and label {Label.shape}")  # 20, 8, 64
 
 ##########Get batches first
 
@@ -326,7 +259,10 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
     X, Label, 0.2, as_torch=True, rng=None
 )
 
-# print(x_train.shape)
+# print(f"x train shape {x_train.shape}") #b, patchdim, seqlen
+# print(f"x train last token {x_train[0, :, -1]}")
+# print(f"label {Label}")
+
 # print(y_train.shape)
 batch_size = 3
 train_size = x_train.shape[0]
@@ -342,22 +278,49 @@ test_loader = DataLoader(
 )
 
 
+def get_fused_sequences(X_clean, X_noisy):
+    """this is to fuse batch seq noisy and clean after adding gaussian
+    X_clean is a batch of shape (B, patchdim, seqlen)
+    """
+    # because the last gnoised patch should be the query and
+    # its clean version the label, simply set the last clean
+    # patch in the fused to 0
+
+    # TODO@DR reason through how this padding affects the loss
+    # calculation and the grad and if I need to do sth about it
+
+    patch_dim = X_clean.shape[-1]
+
+    X_cleaner = torch.empty_like(X_clean)  # make copy to zero out last and fuse
+    X_cleaner.copy_(X_clean)
+
+    X_cleaner[
+        :, :, -1
+    ] = 0.0  # 0 out last patch where the query is on the clean supervision
+
+    fused_seq = torch.cat((X_noisy, X_cleaner), dim=1)  # fuse on the patch dim
+    # print(f"are noisy and clean diff? {X_noisy==X_clean}") #yes they are different
+
+    # I already have the label
+    return fused_seq
+
+
 def normalize(inputs, target):
+    dim = target.shape[1]
     in_min, in_max = torch.min(inputs), torch.max(inputs)
     target_min, target_max = torch.min(target), torch.max(target)
-    range = in_max - in_min
+    all_min, all_max = min(in_min, target_min), max(in_max, target_max)
+    range = all_max - all_min
     # make it safe
-    return (inputs - in_min) / (range + torch.finfo(inputs.dtype).eps), (
-        target - target_min
-    ) / (torch.finfo(target.dtype).eps + target_max - target_min)
+    target[:, : dim // 2] = (target[:, : dim // 2] - all_min) / (
+        torch.finfo(target.dtype).eps + range
+    )
+    return (inputs - all_min) / (range + torch.finfo(inputs.dtype).eps), target
 
 
-for i, data in enumerate(train_loader):
+def get_batch_samples(data):
     inputs, target = data
-    print(f"inputs shape {inputs.shape} and target shape {target.shape}")
-    # before noise
-    # inputs shape torch.Size([3, 64, 8]) and target shape torch.Size([3, 128])
-
+    # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
     inputs, target = normalize(inputs, target)
     b, pdim, seq_len = inputs.shape
@@ -366,7 +329,43 @@ for i, data in enumerate(train_loader):
     t = torch.exp(
         torch.empty(seq_len).uniform_(math.log(10 ** (-9)), math.log(10**3))
     )
+    # print(f"the t {t}")
+    sqrtt = torch.sqrt(t)
 
+    # print(f"the sqrtt {sqrtt}")
     # get z for this batch
     z = torch.randn_like(inputs)
-    print(f"z shape {z.shape}")
+    # print(f"z shape {z.shape}")
+    sqrttz = sqrtt * z
+    # print(f"the noise*sqrtt last token {sqrttz[0,:,-1]}")
+
+    # test that the broadcasting happened as expected
+    # print(f" check {sqrttz[0,1,0] / sqrtt[0]} and {z[0, 1, 0]}") #ok
+
+    # Get noisy seq for the batch
+    noisy = torch.zeros_like(inputs)
+    noisy += inputs
+    noisy += sqrttz
+
+    # Get fused seq for the batch; query is last; noisy first
+    fused = get_fused_sequences(inputs, noisy)  # this is a batch
+    # print(f"the fused shape {fused.shape}") # ok double patch dim
+    # print(f"the fused last otken chekc {fused[2,:,-1]}")
+    # print(f"the noisy last otken chekc {noisy[2,:,-1]}") # i think as expected
+
+    # so now have inputs (clean), target, z, noisy only, fused, t
+    return t, z, target, fused
+
+
+# for i, data in enumerate(train_loader):
+#     t, z, target, xs = get_batch_samples(data)
+#     # print(f"inputs shape {inputs.shape} and target shape {target.shape}")
+
+#     # print(f"returned z.shape {z.shape}") #(B, patc, seq)
+#     # print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
+#     # print(t) # a seq len
+#     # print(f"target shape {target.shape}") #(B, 2patch)
+#     # print(f"the fused last otken chekc {xs[2,:,-1]}")
+#     # print(f"the target last otken chekc {target[2]}") # i think as expected
+
+#     break

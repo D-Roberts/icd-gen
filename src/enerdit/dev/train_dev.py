@@ -16,7 +16,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from transformers.optimization import get_cosine_schedule_with_warmup
 
-from datagen_onestr_dev import train_loader, test_loader
+# from datagen_onestr_dev import train_loader, test_loader
+from dgen_for_gaussian import get_batch_samples, train_loader, test_loader
 
 from EnerdiT_dev import *
 
@@ -91,10 +92,13 @@ class Trainer:
 
         space_score = torch.permute(space_score, (0, 2, 1))
 
-        # Used the ys label right now with l1 loss for architecture dev
-        # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
-        # FOr l1 loss calculation - use last score on the query token
-        loss = st_loss(space_score[:, :, -1], ys[:, :64])  # use only the non-zero
+        # FOr l1 or l2 loss calculation - use last score on the query token
+        loss_mse_spaces = st_loss(
+            space_score[:, :, -1], ys[:, :64]
+        )  # use only the non-zero
+        # and on time score
+        loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
+        loss = loss_mse_spaces + loss_mse_timesc
 
         # here in code the label y is the clean
         # loss, loss_sp, loss_t = st_loss(
@@ -273,7 +277,8 @@ class STLoss(nn.Module):
             return stl
 
 
-loss_func_dev = nn.L1Loss()
+# loss_func_dev = nn.L1Loss() # this was for gamma;
+loss_func_dev = nn.MSELoss()  # MSE looks better with gaussians
 
 # spaceloss_dev = SpaceLoss()
 # timeloss_dev = TimeLoss()
@@ -281,31 +286,31 @@ stloss_dev = STLoss()
 
 
 # add a test
-def test_eval(model, test_loader, loss_func_dev):
-    count = 0.0
-    test_loss_total = 0.0
+# def test_eval(model, test_loader, loss_func_dev, t):
+#     count = 0.0
+#     test_loss_total = 0.0
 
-    with torch.no_grad():
-        for i, data in enumerate(test_loader, 0):
-            samples, targets = data
-            energy, space_score, time_score = model(samples.to(device))
+#     with torch.no_grad(): #TODO@DR this is not working now after refactor for gaussian
+#         for i, data in enumerate(test_loader, 0):
+#             t, z, samples, targets = get_batch_samples(data)
+#             energy, space_score, time_score = model(samples.to(device), t)
 
-            # Use the ys label right now with l1 loss
-            # For architecture dev
+#             # Use the ys label right now with l1 loss
+#             # For architecture dev
 
-            preds = torch.permute(space_score, (0, 2, 1))
-            # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
+#             preds = torch.permute(space_score, (0, 2, 1))
+#             # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
 
-            # FOr l1 loss calculation - use last score on the query token
-            test_loss = loss_func_dev(preds[:, :, -1], targets.to(device)).item()
+#             # FOr l1 loss calculation - use last score on the query token
+#             test_loss = loss_func_dev(preds[:, :, -1], targets.to(device)).item()
 
-        test_loss_total += test_loss
-        count += 1
-    return test_loss_total / count
+#         test_loss_total += test_loss
+#         count += 1
+#     return test_loss_total / count
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 1
+epochs = 60
 train_size = len(train_loader)
 
 
@@ -314,14 +319,6 @@ train_size = len(train_loader)
 # print(model)
 model.to(device)
 
-
-def normalize(inputs, target):
-    in_min, in_max = torch.min(inputs), torch.max(inputs)
-    target_min, target_max = torch.min(target), torch.max(target)
-    range = in_max - in_min
-    return (inputs - in_min) / range, (target - target_min) / (target_max - target_min)
-
-
 batch_count = 0
 energies = []
 for epoch in range(epochs):
@@ -329,29 +326,13 @@ for epoch in range(epochs):
     print(f"***********Epoch is {epoch}")
     epoch_loss = 0.0
     for i, data in enumerate(train_loader, 0):
-        inputs, target = data
+        t, z, target, xs = get_batch_samples(data)
 
-        #  all val bet 0 and 1
-        inputs, target = normalize(inputs, target)
+        # print(f"returned z.shape {z.shape}") #(B, patc, seq)
+        # print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
+        # print(t) # a seq len
+        # print(f"target shape {target.shape}") #(B, 2patch)
 
-        # print(f"check range inputs {torch.min(inputs)}, {torch.max(inputs)}")
-        # print(f"check range targets {torch.min(target)}, {torch.max(target)}")
-
-        # print(f"one batch inputs are {inputs[0]} of shape {inputs[0].shape}") #[128, 8] so (2Xpatch dim, seqlen) for shape as expected
-        # print(f"one batch label is {target[0]} of shape {target[0].shape}") # as expected
-        # print(f"non zero part of label {target[0][:64]}") #as expected
-        # print(f"zero part of label {target[0][64:]}") #as expected
-        # print(f"one batch inputs first token {inputs[0][:, 0]} of shape {inputs[0][:, 0].shape}") #all nonzero, shape is (2Xpatch dim) ok
-        # print(f"one batch inputs last token {inputs[0][:, -1]} of shape {inputs[0][:, -1].shape}") #half zeros, shape is (2Xpatch dim) ok
-        # print(f"bec I took off noise last token and label should be equal {inputs[0][:, -1] == target[0]}") # yes, as expected
-        b, pdim, seq_len = inputs.shape
-
-        # THis will be the t to generate noise for the seq and to use in loss and in time embed
-        t = torch.exp(
-            torch.empty(seq_len).uniform_(math.log(10 ** (-9)), math.log(10**3))
-        )
-        # print(f"t min max is {torch.round(torch.min(t), decimals=6)} and {torch.round(torch.max(t), decimals=2)}")
-        # t looks ok; so here is the same t tensor for each instance of this minibatch
         # TODO@DR: note that right now the same t will land on the last token / query for each instance
         # in the mini batch and will be used in noisy and in loss calculation. Must see about this.
         # maybe randomize per instance.
@@ -372,7 +353,7 @@ for epoch in range(epochs):
         # test after time embeds with l1 on space score
         loss, energy, sh, th = trainer.train_step(
             model,
-            inputs.to(device),
+            xs.to(device),
             target.to(device),
             optimizer,
             loss_func_dev,
@@ -417,17 +398,18 @@ for epoch in range(epochs):
     # print("\tlast LR:", scheduler.get_last_lr())
 
     # eval once per epoch in dev
-    # leave the l1 for now
-    # test_lossl1_mean = test_eval(model, test_loader, loss_func_dev)
-    # print(f"Test l1 mean same set each epoch ***********{test_lossl1_mean}*******")
-    # print(f"Train epoch loss {epoch_loss/train_size}*******")
+    # with MSE in gaussians
+    # test_lossmse_mean = test_eval(model, test_loader, loss_func_dev, t)
+    # print(f"Test l1 mean same set each epoch ***********{test_lossmse_mean}*******")
+
+    print(f"Train epoch loss {epoch_loss/train_size}*******")
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
     # stop for debug
-    if batch_count == 3:
-        break
+    # if batch_count == 3:
+    #     break
 
 
 ################so when I train with no noise data, the losses have these non-zero values
