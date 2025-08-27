@@ -99,28 +99,23 @@ class EnerdiTFinal(nn.Module):
         pass
 
     def forward(self, sh, th, noisy, cf1):
-        """return energy for each token in context as well as
-        query token (last) TODO@DR reason about the zero padding
+        """
 
-        use the corrected s in U = 0.5<s, y>
+        U = 0.5( <s, y> - correction) TODO@DR reconsider math for this
+        correction
 
-        cf1 is a correction factor. SHould be the ratio of
-        eps y and eps t which should give sensitivity of
-        the true score net to y and t. Let's assume small numbers
+        correction = cf1 * time score
 
-        and take cf1 as another learned param
+        cf1 learned
 
-        there was a cf2 correction factor as well but let's
-        ignore it for now
-
-        return : energy for each token in context and the query token
+        return : energy for query token
         """
         # only use the non-zero portion of the noisy query
 
         noisy = torch.permute(noisy, (0, 2, 1))
         sh = torch.permute(sh, (0, 2, 1))
-        print(f"in energy calculation noisy shape {noisy.shape}")
-        print(f"in energy calculation space score shape {sh.shape}")
+        # print(f"in energy calculation noisy shape {noisy.shape}")
+        # print(f"in energy calculation space score shape {sh.shape}")
 
         bs, d, seq_len = noisy.shape
         d = d // 2
@@ -129,17 +124,22 @@ class EnerdiTFinal(nn.Module):
         query = noisy[:, :d, -1]
         sp_pred = sh[:, :, -1]  # the space head should already have d // 2
 
-        print(f"sp_pred in energy {sp_pred.shape}")
-        print(f"th shape in energy {th.shape}")
+        # print(f"sp_pred in energy {sp_pred.shape}")
+        # print(f"th shape in energy {th.shape}") #3, 8, 64
+        # should be scalar according to theory
+        th_pred = th[:, -1, :].mean(dim=-1)
+        # print(f"th_pred shape in energy {th_pred.shape}")
 
-        # TODO@DR: will have to see about shapes and signs
+        # This is not right because th_pred is a scalar
         # sc = sh - th * cf1
 
-        # TODO@DR: check that energy is calc on the right dims
-        # energy = 0.5 * torch.sum(sc * y, dim=(-1))
+        # TODO@DR: I am adding the correction after inner prod
+        # so if this works empirically need to rework theory math
+        # for this approximation
 
-        # let's see first with only space head
-        energy = 0.5 * torch.sum(sp_pred * query, dim=(-1))
+        correction = cf1 * th_pred
+        # TODO@DR: will have to see about signs; query is the noisy
+        energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1)) - correction)
 
         return energy
 

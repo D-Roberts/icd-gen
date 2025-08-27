@@ -112,6 +112,8 @@ class Trainer:
         optimizer.step()
 
         return (
+            loss_sp.detach().item(),
+            loss_t.detach().item(),  # for debug
             loss.detach().item(),
             qenergy.detach()
             .cpu()
@@ -198,7 +200,7 @@ class TimeLoss(nn.Module):
 
         ltime = (term1 - term2) ** 2
 
-        print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
+        # print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
 
         # mean over minibatch
         return ltime.mean()
@@ -280,7 +282,7 @@ def test_eval(model, test_loader, loss_func_dev):
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 1
+epochs = 30
 train_size = len(train_loader)
 
 
@@ -297,7 +299,7 @@ for epoch in range(epochs):
     for i, data in enumerate(train_loader, 0):
         inputs, target = data
 
-        loss, energy, sh, th = trainer.train_step(
+        loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
             model,
             inputs.to(device),
             target.to(device),
@@ -310,7 +312,7 @@ for epoch in range(epochs):
         # print(f"energy on query {energy.shape}") # this is for the minibatch
         # so let's just log the first
 
-        print(f"time loss is {loss}\n")
+        print(f"total loss is {loss}\n")
         epoch_loss += loss
         batch_count += 1
 
@@ -324,10 +326,12 @@ for epoch in range(epochs):
         #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
         # )
 
-        exp.log_metrics({"Dev train time batch loss": loss}, step=batch_count)
+        exp.log_metrics({"batch loss": loss}, step=batch_count)
+        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+
         # exp.log_metrics({"Dev train spacehead-only batch query -energy=logp": -energy[:,-1]}, step=batch_count)
         # exp.log_metrics({"Dev train spacehead-only batch p": torch.exp(-energy)}, step=batch_count)
-
         # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
 
         # CHeck that the weights are updating
@@ -345,7 +349,7 @@ for epoch in range(epochs):
     # print(f"Test l1 mean same set each epoch ***********{test_lossl1_mean}*******")
     # print(f"Train epoch loss {epoch_loss/train_size}*******")
 
-    exp.log_metrics({"Dev Epoch Time loss": epoch_loss / train_size}, step=epoch)
+    exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
 # print(len(energies))
