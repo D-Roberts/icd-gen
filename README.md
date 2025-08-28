@@ -1,6 +1,6 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list [DR is me and I give myself tasks bc I wear many hats and I work alone a lot]
+### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot.]
 
     *-1. Mke the Enerditork w: priority 1. 
         - WIP

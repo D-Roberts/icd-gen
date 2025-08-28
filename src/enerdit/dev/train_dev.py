@@ -72,7 +72,7 @@ model = EnerdiT(
     d_model=128,
     input_dim=128,  # the way datagen is setup now - comes in one flattened
     cf1_init_value=0.5,
-    num_heads=1,
+    num_heads=2,
     depth=1,
     mlp_ratio=4,
 )
@@ -237,7 +237,7 @@ class Trainer:
         # getting losses on last token, the query
 
         # print(f"so t is {t}")
-        loss, loss_sp, loss_t = spacetime_loss(
+        _, loss_sp, loss_t = spacetime_loss(
             space_score[:, :, -1],
             time_score[:, -1],
             z[:, :, -1],
@@ -245,7 +245,7 @@ class Trainer:
             return_both=True,
         )
 
-        # loss =dev_loss(space_score[:,:, -1], ys[:, :64])
+        loss = dev_loss(space_score[:, :, -1], ys[:, :64])
         # it is learning with the target y on the space score or time score or sum.
 
         #######################################

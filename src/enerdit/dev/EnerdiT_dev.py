@@ -238,9 +238,9 @@ class TimeHead(nn.Module):
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_time = DyTanh((context_len, d_model))
+        self.dyt_time = DyTanh((context_len, 2 * d_model))
         self.silu = nn.SiLU()
-        self.time_head = nn.Linear(d_model, input_dim, bias=True)
+        self.time_head = nn.Linear(2 * d_model, input_dim, bias=True)
 
     def forward(self, x):
         x = self.dyt_time(x)
@@ -263,9 +263,9 @@ class SpaceHead(nn.Module):
     def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_space = DyTanh(shape_in=(context_len, d_model))
+        self.dyt_space = DyTanh(shape_in=(context_len, 2 * d_model))
         self.silu = nn.SiLU()
-        self.space_head = nn.Linear(d_model, input_dim, bias=True)
+        self.space_head = nn.Linear(2 * d_model, input_dim, bias=True)
 
     def forward(self, x):
         # print(f"shape in head {x.shape}") # [3, 8, 4] is (B, seq_len, d_model)
@@ -286,19 +286,20 @@ class EnerdiTBlock(nn.Module):
 
         # TODO@DR: will have to check on all the logic of where dyt gets applyied
         # print(f"context_len, d_model) {context_len, d_model}")
-        self.dyt1 = DyTanh((context_len, d_model))
+        # Because concatenated time embeddings double size
+        self.dyt1 = DyTanh((context_len, 2 * d_model))
 
         self.attn = Attention(
-            d_model, num_heads, qkv_bias=True
+            2 * d_model, num_heads, qkv_bias=True
         )  # TODO@DR there are some kwargs here will have to check them out
 
-        self.dyt2 = DyTanh((context_len, d_model))
+        self.dyt2 = DyTanh((context_len, 2 * d_model))
 
         mlp_hidden_dim = int(0.4 * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
 
         self.mlp = Mlp(
-            in_features=d_model,
+            in_features=2 * d_model,
             hidden_features=mlp_hidden_dim,
             act_layer=approx_gelu,
             drop=0,
@@ -363,7 +364,7 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = PreHead(context_len, d_model)
+        self.prehead_linear = PreHead(context_len, 2 * d_model)
 
         # a kind of unembed; aim to use only on the non-zero part of
         # the query and clean label
@@ -418,14 +419,26 @@ class EnerdiT(nn.Module):
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
         time_embed = self.time_embed(t)
+        print(f"shape of time embedding {time_embed.shape}")
+
+        # as of right now t is the same for the sequence so
+        # to concatenate time_embed I need to repeat it for the sequence
 
         # How will this work if t is same value for one sequence
         # but differs accross the batch?
 
-        # TODO@DR: fix the time embed
-        # x = patch_embed + space_embed + time_embed
+        # x = patch_embed + space_embed
         x = patch_embed + space_embed
+
+        time_embed = time_embed.unsqueeze(1)
+        time_embed = torch.tile(time_embed, (1, 8, 1))
+        # concat the time embed here
+        x = torch.cat([x, time_embed], dim=-1)
+        # print(f"shape of concat emb {x.shape}") # right so now double d_model
         resx = x
+        # TODO@DR: experiment with where to concat the time_embed
+        # and the other archi choices including res and how many dytanh and silus
+        # and if to have the prehead at all
 
         ##################Input normalization and embedding area over
 
