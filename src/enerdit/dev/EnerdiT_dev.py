@@ -397,7 +397,7 @@ class EnerdiT(nn.Module):
         # print("what shape comes the batch into Enerdit ", x.shape)
         b_s, in_d, context_len = x.shape
 
-        assert t.shape[0] == x.shape[-1]
+        assert t.shape[0] == x.shape[0]
         # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
         # reshape for embedding and dyt
@@ -414,7 +414,12 @@ class EnerdiT(nn.Module):
         )  # [1, seq_len, d_model] will add same order each instance in batch
         time_embed = self.time_embed(t)
 
-        x = patch_embed + space_embed + time_embed
+        # How will this work if t is same value for one sequence
+        # but differs accross the batch?
+
+        # TODO@DR: fix the time embed
+        # x = patch_embed + space_embed + time_embed
+        x = patch_embed + space_embed
         resx = x
 
         ##################Input normalization and embedding area over

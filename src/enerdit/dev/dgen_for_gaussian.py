@@ -82,17 +82,6 @@ class GroupSampler(DataSampler):
         else:
             self.S = S
 
-        # not jelassi paper
-        if gamma_dict is None:
-            self.gamma_dict = {}  # create set gamma params;
-            self.gamma_dict["y1"] = {
-                "ga": torch.tensor([9.0]),
-                "gb": torch.tensor([0.50]),
-            }
-            self.gamma_dict["y2"] = {"ga": torch.tensor([0.5]), "gb": torch.tensor([1])}
-        else:
-            self.gamma_dict = gamma_dict
-
     def partition(self, D, L, seed=42):
         """
         Get the
@@ -188,9 +177,7 @@ print(f"X.shape {X.shape} and label {Label.shape}")  # 20, 8, 64
 
 
 class DatasetWrapper(Dataset):
-    """
-    (relic): currently, there is a "remainder" batch at the end, with size smaller than batch_size -- could discard it
-    """
+    """ """
 
     def __init__(self, X, Y):
         self.x = X
@@ -326,17 +313,24 @@ def get_batch_samples(data):
     b, pdim, seq_len = inputs.shape
 
     # THis will be the t to generate noise for the seq and to use in loss and in time embed
-    t = torch.exp(
-        torch.empty(seq_len).uniform_(math.log(10 ** (-9)), math.log(10**3))
-    )
+    t = torch.exp(torch.empty(b).uniform_(math.log(10 ** (-9)), math.log(10**3)))
     # print(f"the t {t}")
     sqrtt = torch.sqrt(t)
+    # print(f"the sqrtt {sqrtt}")
 
     # print(f"the sqrtt {sqrtt}")
     # get z for this batch
     z = torch.randn_like(inputs)
+
     # print(f"z shape {z.shape}")
-    sqrttz = sqrtt * z
+    sqrttz = torch.zeros_like(z)
+
+    # DO some silly code with loop since it is late and I am tired.
+    # I am applying the same t noise accross the sequence in one instance
+    # and diffeernt t accross the minibatch
+    for i in range(b):
+        # print(f"sqrtt[i].shape {z[i].shape}")
+        sqrttz[i] += sqrtt[i] * z[i]
     # print(f"the noise*sqrtt last token {sqrttz[0,:,-1]}")
 
     # test that the broadcasting happened as expected

@@ -103,7 +103,7 @@ class TimeLoss(nn.Module):
         """
         bs, d = z.shape
 
-        term1 = (t / d) * time_score
+        term1 = (1000 * t / d) * time_score
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
         # print(f"z normed shape {znormedsq.shape}")
         term2 = 0.5 * (1 - znormedsq / d)
@@ -136,7 +136,7 @@ class SpaceLoss(nn.Module):
         # print(f"d is ....{d}") # patch size (8x8 for example = 64)
 
         # space loss term1 (as in eq 43); non neg and non-zero
-        term1 = torch.sqrt(torch.tensor(t / d)) * sp
+        term1 = torch.sqrt(1000 * t / d) * sp
         term2 = z / torch.sqrt(torch.tensor(d))
 
         # print(f"what is torch.sqrt(t / d) in space loss {torch.sqrt(t / d)}")
@@ -169,9 +169,9 @@ class SpaceTimeLoss(nn.Module):
         # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
         spl = self.spacel(space_scores, z, t)
         tl = self.timel(time_scores, z, t)
+        # print(f"t now in spacetime loss after I changed the schedule {t}")
 
-        # stl = spl + tl
-        stl = spl
+        stl = spl + tl
 
         if return_both:
             return stl, spl, tl
@@ -235,6 +235,8 @@ class Trainer:
 
         # here in code the label y is the clean
         # getting losses on last token, the query
+
+        # print(f"so t is {t}")
         loss, loss_sp, loss_t = spacetime_loss(
             space_score[:, :, -1],
             time_score[:, -1],
@@ -292,7 +294,7 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 100
+epochs = 30
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)

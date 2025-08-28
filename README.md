@@ -10,6 +10,9 @@
             - 2. Dev new loss / dgen setup to enable learning.
             
                 - WIP [not there yet]
+                - next: fix the t schedule and time embeddings.
+                
+                
                 
            
 
