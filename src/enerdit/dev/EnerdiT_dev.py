@@ -25,12 +25,13 @@ class DyTanh(nn.Module):
 
         self.alpha = nn.Parameter(torch.ones(1) * alpha_init_value)
         self.weight = nn.Parameter(torch.ones(shape_in))
-        # print("tanh weight shape", self.weight.shape)
         self.bias = nn.Parameter(torch.zeros(shape_in))
+        self.shape_in = shape_in
 
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
         # print("In tanh x shape", x.shape)
+        # print(f"trouble weight in tanh {self.shape_in}")
         x = x * self.weight + self.bias
         return x
 
@@ -284,6 +285,7 @@ class EnerdiTBlock(nn.Module):
         super().__init__()
 
         # TODO@DR: will have to check on all the logic of where dyt gets applyied
+        # print(f"context_len, d_model) {context_len, d_model}")
         self.dyt1 = DyTanh((context_len, d_model))
 
         self.attn = Attention(
@@ -326,10 +328,10 @@ class EnerdiT(nn.Module):
         # output_dim=10,
         # channels=3,
         input_dim,  # the way datagen is setup now - comes in one flattened
-        cf1_init_value=0.1,
-        num_heads=1,
-        depth=1,
-        mlp_ratio=4,
+        cf1_init_value,
+        num_heads,
+        depth,
+        mlp_ratio,
     ):
         super(EnerdiT, self).__init__()
 
@@ -351,7 +353,10 @@ class EnerdiT(nn.Module):
 
         # then comes the list of N EnerdiT blocks
         self.blocks = nn.ModuleList(
-            [EnerdiTBlock(d_model, num_heads, mlp_ratio) for _ in range(depth)]
+            [
+                EnerdiTBlock(d_model, context_len, num_heads, mlp_ratio)
+                for _ in range(depth)
+            ]
         )
 
         # # correction factor space time scores

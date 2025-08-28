@@ -70,8 +70,8 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 model = EnerdiT(
     context_len=8,
     d_model=128,
-    input_dim=128,
-    cf1_init_value=0.5,  # This is just to init - but param is learned.
+    input_dim=128,  # the way datagen is setup now - comes in one flattened
+    cf1_init_value=0.5,
     num_heads=1,
     depth=1,
     mlp_ratio=4,
@@ -299,7 +299,7 @@ train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
 
-# print(model)
+print(model)
 model.to(device)
 
 batch_count = 0
