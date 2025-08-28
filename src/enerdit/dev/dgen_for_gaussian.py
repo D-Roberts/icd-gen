@@ -318,7 +318,7 @@ def get_batch_samples(data):
     tmin = torch.tensor(10 ** (-9))
 
     # Change the noise tmax considering how small is d
-    tmax = torch.tensor(100)
+    tmax = torch.tensor(4000)
 
     logtmin = torch.log(tmin)
     logtmax = torch.log(tmax)
@@ -353,9 +353,9 @@ def get_batch_samples(data):
     noisy += inputs
     noisy += sqrttz
 
-    print(
-        f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
-    )
+    # print(
+    #     f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
+    # )
 
     # Get fused seq for the batch; query is last; noisy first
     fused = get_fused_sequences(inputs, noisy)  # this is a batch
