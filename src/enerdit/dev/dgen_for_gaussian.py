@@ -318,7 +318,7 @@ def get_batch_samples(data):
     tmin = torch.tensor(10 ** (-9))
 
     # Change the noise tmax considering how small is d
-    tmax = torch.tensor(4000)
+    tmax = torch.tensor(100)
 
     logtmin = torch.log(tmin)
     logtmax = torch.log(tmax)

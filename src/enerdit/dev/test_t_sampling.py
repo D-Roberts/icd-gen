@@ -166,10 +166,14 @@ print(f"t_as_in_gen_now {t_as_in_gen_now}")
 
 #############################
 batch_size = 5
-t = torch.randint(
-    0,
-    1000,
-    (batch_size,),
-)
-print(f"t linear schedule from DiT in one batch step {t}")  # [640, 606, 342,  15, 829]
-# ok - comparable numbers
+
+for i in range(3):
+    t = torch.randint(
+        0,
+        1000,
+        (batch_size,),
+    )
+    print(
+        f"t linear schedule from DiT in one batch step {t}"
+    )  # [640, 606, 342,  15, 829]
+    # ok - comparable numbers

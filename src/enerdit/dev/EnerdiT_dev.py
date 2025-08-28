@@ -176,8 +176,8 @@ class EnerdiTFinal(nn.Module):
 
         noisy = torch.permute(noisy, (0, 2, 1))
         sh = torch.permute(sh, (0, 2, 1))
-        # print(f"in energy calculation noisy shape {noisy.shape}")
-        # print(f"in energy calculation space score shape {sh.shape}")
+        print(f"in energy calculation noisy shape {noisy.shape}")
+        print(f"in energy calculation space score shape {sh.shape}")
 
         bs, d, seq_len = noisy.shape
         d = d // 2
@@ -463,7 +463,7 @@ class EnerdiT(nn.Module):
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens
         energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
-        # print(f"what is {self.corf}")
+        print(f"what is {self.corf}")
 
         return energy, space_score, time_score
 

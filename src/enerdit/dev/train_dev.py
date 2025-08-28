@@ -114,6 +114,38 @@ class TimeLossV1(nn.Module):
         return torch.mean(ltime)
 
 
+class TimeLossV2(nn.Module):
+    def __init__(self):
+        super(TimeLossV2, self).__init__()
+        pass
+
+    def forward(self, time_score, z, clean, query, t):
+        """take average over minibatch in this implementation
+        this is for one time t;
+
+        only on the query so use y and x directly for signal
+        supervision
+        label is clean on the noisy query last sequence token
+        """
+        bs, d = z.shape  # on last token only
+
+        weight_factor = (t / d) ** 2
+
+        print(
+            f"be sure the normedsq is taken on the right dim (-1) in timelossv2 {query.shape}"
+        )
+        normedsq = torch.norm(query - clean, p=2, dim=-1) ** 2
+        parans_term2 = d / (2 * t) - normedsq / (2 * (t**2))
+
+        parans_term = time_score - parans_term2
+        time_match = weight_factor * (parans_term**2)
+        # there is a pattern/signal in this suppervision on the time score
+        # so the net should be able to learn it.
+        # it can learn mse(y,x) right now so why not this?
+
+        return torch.mean(time_match)
+
+
 class SpaceLossV1(nn.Module):
     def __init__(self):
         super(SpaceLossV1, self).__init__()
@@ -158,21 +190,72 @@ class SpaceLossV1(nn.Module):
         return torch.mean(lspace)
 
 
+class SpaceLossV2(nn.Module):
+    def __init__(self):
+        super(SpaceLossV2, self).__init__()
+        pass
+
+    def forward(self, space_score, z, clean, query, t):
+        """
+        use t from query last token.
+        same for z and query and label
+
+        """
+        print(f"what is shape - the clean in SpaceLoss {clean.shape}")
+        print(f"what is shape - the query in SpaceLoss {query.shape}")
+        # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
+        # so here x is (B, dim, seq_len) while y=clean target on last noisy query
+        # is (B, dim)
+
+        bs, d = query.shape
+
+        # print(f"d is ....{d}") # patch size (8x8 for example = 64)
+
+        weight_factor = t / d  # this is safe, d is never 0
+
+        # zero grads come due a lot to very small term1
+        subtract = space_score - (query - clean) / t
+
+        print(f"check dim as expected to take sq norm in spacelossv2 {subtract.shape}")
+
+        ldsm = (torch.norm(subtract, p=2, dim=1)) ** 2
+
+        lspace = weight_factor * ldsm
+        # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
+        return torch.mean(lspace)
+
+
 class SpaceTimeLoss(nn.Module):
     """with space and time heads losses together"""
 
     def __init__(self):
         super(SpaceTimeLoss, self).__init__()
-        self.spacel = SpaceLossV1()
-        self.timel = TimeLossV1()
+        self.spacel = SpaceLossV2()
+        self.timel = TimeLossV2()
 
-    def forward(self, space_scores, time_scores, z, t, return_both=True):
+    def forward(
+        self,
+        space_scores,
+        time_scores,
+        z,
+        clean,
+        query,
+        t,
+        U,
+        add_U=False,
+        return_both=True,
+    ):
         # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
-        spl = self.spacel(space_scores, z, t)
-        tl = self.timel(time_scores, z, t)
+        spl = self.spacel(space_scores, z, clean, query, t)
+        tl = self.timel(time_scores, z, clean, query, t)
         # print(f"t now in spacetime loss after I changed the schedule {t}")
 
         stl = spl + tl
+
+        lamu = 0.01
+        if add_U:
+            stl += lamu * U.mean()  # minibatch average
+            print(f"U in spacetime loss {U}")
 
         if return_both:
             return stl, spl, tl
@@ -238,17 +321,23 @@ class Trainer:
         # getting losses on last token, the query
 
         # print(f"so t is {t}")
-        _, loss_sp, loss_t = spacetime_loss(
-            space_score[:, :, -1],
-            time_score[:, -1],
-            z[:, :, -1],
+
+        # put through only the query token and respectives
+        loss, loss_sp, loss_t = spacetime_loss(
+            space_score[:, :, -1],  # this is already shape of patch (not double)
+            time_score[:, -1],  # this is a scalar
+            z[:, :64, -1],  # noise corresponding to query non-padded portion
+            ys[:, :64],  # clean label, non-padding portion
+            xs[:, :64, -1],  # query last token of sequence non-padded portion
             t[-1],
+            qenergy,
+            add_U=True,  # if to add the energy regularizer to loss
             return_both=True,
         )
 
         # This is the MSE for dev purposes when working on archi or datagen
         # and not on losses
-        loss = dev_loss(space_score[:, :, -1], ys[:, :64])
+        # loss = dev_loss(space_score[:, :, -1], ys[:, :64])
         # it is learning with the target y on the space score or time score or sum.
 
         #######################################
@@ -260,7 +349,7 @@ class Trainer:
         #     if param.grad is not None:
         #         print(f"  {name}: {param.grad.norm().item():.4f}")
 
-        # Apply gradient clipping by norm; just leave it in
+        # Apply gradient clipping by norm; just leave it in although not needed
         max_norm = 1.0  # Define the maximum allowed norm
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
@@ -401,8 +490,8 @@ for epoch in range(epochs):
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
     # stop for debug
-    # if batch_count == 3:
-    #     break
+    if batch_count == 3:
+        break
 
 ###########################later
 # print(len(energies))
