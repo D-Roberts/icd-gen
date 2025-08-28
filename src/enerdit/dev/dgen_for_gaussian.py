@@ -10,6 +10,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
+from torch.distributions import Uniform
+from torch.distributions import MultivariateNormal
 
 
 class DataSampler:
@@ -312,16 +314,24 @@ def get_batch_samples(data):
     inputs, target = normalize(inputs, target)
     b, pdim, seq_len = inputs.shape
 
-    # THis will be the t to generate noise for the seq and to use in loss and in time embed
-    t = torch.exp(torch.empty(b).uniform_(math.log(10 ** (-9)), math.log(10**3)))
+    # Sample time steps
+    tmin = torch.tensor(10 ** (-9))
+    tmax = torch.tensor(1000)
+
+    logtmin = torch.log(tmin)
+    logtmax = torch.log(tmax)
+
+    logt_distrib = Uniform(low=torch.tensor([logtmin]), high=torch.tensor([logtmax]))
+    logt = logt_distrib.sample(torch.tensor([b]))
+
+    t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
+    # print(f"generated t is {t} and shape {t.shape}")
+
     # print(f"the t {t}")
     sqrtt = torch.sqrt(t)
     # print(f"the sqrtt {sqrtt}")
-
-    # print(f"the sqrtt {sqrtt}")
     # get z for this batch
     z = torch.randn_like(inputs)
-
     # print(f"z shape {z.shape}")
     sqrttz = torch.zeros_like(z)
 
@@ -340,6 +350,10 @@ def get_batch_samples(data):
     noisy = torch.zeros_like(inputs)
     noisy += inputs
     noisy += sqrttz
+
+    print(
+        f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
+    )
 
     # Get fused seq for the batch; query is last; noisy first
     fused = get_fused_sequences(inputs, noisy)  # this is a batch

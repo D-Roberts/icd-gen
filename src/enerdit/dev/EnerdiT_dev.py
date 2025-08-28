@@ -92,17 +92,20 @@ class TimeEmbedding(nn.Module):
 
     embeddings are sin cos
 
-    t is a seq len vector in this formulation with a context prompt.
-    (as of right now)
+    as of right now I have same t accross the sequence
+    I embed it with this
+    I tile it for seq len - identical for each sequence token
+    I concat on the embedding dimension to the x input in enerdit block
 
+    The t will be distinct for each instance in the batch
     """
 
     def __init__(
         self,
         d_model,
-        frequency_embedding_size=32,
-        mint=1 / (10**3),
-        maxt=1 / (10 ** (-9)),
+        frequency_embedding_size=256,
+        mint=0,
+        maxt=10000,
     ):
         super().__init__()
         self.time_embedder = nn.Sequential(
@@ -346,9 +349,9 @@ class EnerdiT(nn.Module):
         self.space_embed = SpaceEmbedding(d_model, context_len)
         self.time_embed = TimeEmbedding(
             d_model,
-            frequency_embedding_size=32,
-            mint=1 / (10**3),
-            maxt=1 / (10 ** (-9)),
+            frequency_embedding_size=256,
+            mint=0,
+            maxt=10000,
         )
 
         ######################################Before this - inputs embedding
@@ -368,7 +371,7 @@ class EnerdiT(nn.Module):
         self.prehead_linear = PreHead(context_len, 2 * d_model)
 
         # a kind of unembed; aim to use only on the non-zero part of
-        # the query and clean label
+        # the noisy query and clean label
         self.time_head = TimeHead(d_model, input_dim // 2, context_len)
         self.space_head = SpaceHead(d_model, input_dim // 2, context_len)
 
@@ -420,7 +423,7 @@ class EnerdiT(nn.Module):
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
         time_embed = self.time_embed(t)
-        print(f"shape of time embedding {time_embed.shape}")
+        # print(f"shape of time embedding {time_embed.shape}")
 
         # as of right now t is the same for the sequence so
         # to concatenate time_embed I need to repeat it for the sequence
@@ -431,6 +434,8 @@ class EnerdiT(nn.Module):
         # x = patch_embed + space_embed
         x = patch_embed + space_embed
 
+        # Tile identical t embeddings for each context token.
+        # Right now they get concat to the input of each enerdit block
         time_embed = time_embed.unsqueeze(1)
         time_embed = torch.tile(time_embed, (1, 8, 1))
 

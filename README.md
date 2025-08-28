@@ -1,17 +1,16 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot.]
+### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot. Oh - I should have a net to do some of this for me! An AI junior! TODO@DR - at some point.]
 
-    *-1. Mke the Enerditork w: priority 1. 
+    *-1. Mke the Enerdit work: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
-        - Start dev step-by-step:
+        - Dev step-by-step:
            
             - 2. Dev new loss / dgen setup to enable learning.
             
                 - WIP [not there yet]
-                - next: fix the t schedule and time embeddings.
-                
+
                 
                 
            

@@ -66,6 +66,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
     if not os.path.exists(core_dir):
         os.mkdir(core_dir)
 
+torch.manual_seed(0)
 
 model = EnerdiT(
     context_len=8,
@@ -245,6 +246,8 @@ class Trainer:
             return_both=True,
         )
 
+        # This is the MSE for dev purposes when working on archi or datagen
+        # and not on losses
         loss = dev_loss(space_score[:, :, -1], ys[:, :64])
         # it is learning with the target y on the space score or time score or sum.
 
@@ -262,6 +265,7 @@ class Trainer:
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
         # After clipping, inspect gradient norms
+        # there is no need for clipping but I'll just leave it for now.
         print("\nGradient norms after clipping:")
         for name, param in model.named_parameters():
             if param.grad is not None:
@@ -391,7 +395,7 @@ for epoch in range(epochs):
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
     exp.log_metrics(
-        {"avg epoch energy aka neg loglikel": energy_epoch / batch_count * train_size},
+        {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
         step=epoch,
     )
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
@@ -400,13 +404,7 @@ for epoch in range(epochs):
     # if batch_count == 3:
     #     break
 
-
-################so when I train with no noise data, the losses have these non-zero values
-# in train step print space loss 0.04604632779955864
-# in train step print time loss 0.24885523319244385
-# total loss is 0.2949015498161316
-
-
+###########################later
 # print(len(energies))
 # print(energies)
 # # Create the histogram
