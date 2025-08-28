@@ -91,9 +91,9 @@ optimizer = torch.optim.AdamW(
 )
 
 
-class TimeLoss(nn.Module):
+class TimeLossV1(nn.Module):
     def __init__(self):
-        super(TimeLoss, self).__init__()
+        super(TimeLossV1, self).__init__()
         pass
 
     def forward(self, time_score, z, t):
@@ -104,7 +104,7 @@ class TimeLoss(nn.Module):
         """
         bs, d = z.shape
 
-        term1 = (1000 * t / d) * time_score
+        term1 = (t / d) * time_score
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
         # print(f"z normed shape {znormedsq.shape}")
         term2 = 0.5 * (1 - znormedsq / d)
@@ -114,9 +114,9 @@ class TimeLoss(nn.Module):
         return torch.mean(ltime)
 
 
-class SpaceLoss(nn.Module):
+class SpaceLossV1(nn.Module):
     def __init__(self):
-        super(SpaceLoss, self).__init__()
+        super(SpaceLossV1, self).__init__()
         pass
 
     def forward(self, sp, z, t):
@@ -137,7 +137,7 @@ class SpaceLoss(nn.Module):
         # print(f"d is ....{d}") # patch size (8x8 for example = 64)
 
         # space loss term1 (as in eq 43); non neg and non-zero
-        term1 = torch.sqrt(1000 * t / d) * sp
+        term1 = torch.sqrt(t / d) * sp
         term2 = z / torch.sqrt(torch.tensor(d))
 
         # print(f"what is torch.sqrt(t / d) in space loss {torch.sqrt(t / d)}")
@@ -163,8 +163,8 @@ class SpaceTimeLoss(nn.Module):
 
     def __init__(self):
         super(SpaceTimeLoss, self).__init__()
-        self.spacel = SpaceLoss()
-        self.timel = TimeLoss()
+        self.spacel = SpaceLossV1()
+        self.timel = TimeLossV1()
 
     def forward(self, space_scores, time_scores, z, t, return_both=True):
         # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
