@@ -67,70 +67,9 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
         os.mkdir(core_dir)
 
 
-class Trainer:
-    """
-    To dev the EnerdiT.
-    """
-
-    def __init__(
-        self,
-    ):
-        pass
-
-    def train_step(self, model, xs, ys, z, optimizer, st_loss, t, dev_loss):
-        optimizer.zero_grad()
-
-        qenergy, space_score, time_score = model(xs, t)
-
-        space_score = torch.permute(space_score, (0, 2, 1))
-
-        # FOr l1 or l2 loss calculation - use last score on the query token
-        # loss_mse_spaces = st_loss(
-        #     space_score[:, :, -1], ys[:, :64]
-        # )  # use only the non-zero
-        # # and on time score
-        # loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
-        # loss = loss_mse_spaces + loss_mse_timesc
-
-        # here in code the label y is the clean
-        loss, loss_sp, loss_t = st_loss(space_score, time_score, z, t, return_both=True)
-
-        # loss =dev_loss(torch.mean(space_score[:,:, -1], dim=-1), torch.mean(ys, dim=1))
-        # it is learning with the target y that's it.
-
-        #######################################
-
-        loss.backward()
-        optimizer.step()
-
-        return (
-            loss_sp.detach().item(),
-            loss_t.detach().item(),  # for debug
-            loss.detach().item(),
-            qenergy.detach()
-            .cpu()
-            .numpy(),  # take out the energy for the context to analyze
-            space_score.detach(),
-            time_score.detach(),
-        )
-
-    def train_loop(
-        self,
-    ):
-        pass
-
-    def eval_step(
-        self,
-    ):
-        pass
-
-
-trainer = Trainer()
-
-
 model = EnerdiT(
     context_len=8,
-    d_model=32,
+    d_model=128,
     input_dim=128,
     cf1_init_value=0.5,  # This is just to init - but param is learned.
     num_heads=1,
@@ -168,7 +107,6 @@ class TimeLoss(nn.Module):
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
         # print(f"z normed shape {znormedsq.shape}")
         term2 = 0.5 * (1 - znormedsq / d)
-
         ltime = (term1 - term2) ** 2
         # print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
         # mean over minibatch
@@ -195,32 +133,45 @@ class SpaceLoss(nn.Module):
         # get z from clean query, noisy query and t (assume t is not 0, which
         # should not be in training)
         bs, d = z.shape
+        # print(f"d is ....{d}") # patch size (8x8 for example = 64)
 
         # space loss term1 (as in eq 43); non neg and non-zero
-        term1 = torch.sqrt(t / d) * sp
+        term1 = torch.sqrt(torch.tensor(t / d)) * sp
         term2 = z / torch.sqrt(torch.tensor(d))
+
+        # print(f"what is torch.sqrt(t / d) in space loss {torch.sqrt(t / d)}")
+        # a very small number
+
+        # mult a 0.5 from the analytical of U on term1
         subtract = term1 - term2
         # print(f"in space loss subtr shape {subtract.shape}") #3, 64
+
+        # zero grads come due a lot to very small term1
         lspace = (torch.norm(subtract, p=2, dim=1)) ** 2
+
+        # test to see if grads if mse like loss
+        # lspace = (torch.norm(sp - term2, p=2, dim=1)) ** 2
+
         # take norm over the input dim
         # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
         return torch.mean(lspace)
 
 
-class STLoss(nn.Module):
+class SpaceTimeLoss(nn.Module):
     """with space and time heads losses together"""
 
     def __init__(self):
-        super(STLoss, self).__init__()
+        super(SpaceTimeLoss, self).__init__()
         self.spacel = SpaceLoss()
         self.timel = TimeLoss()
 
     def forward(self, space_scores, time_scores, z, t, return_both=True):
         # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
-        spl = self.spacel(space_scores[:, :, -1], z[:, :, -1], t[-1])
-        tl = self.timel(time_scores[:, -1], z[:, :, -1], t[-1])
+        spl = self.spacel(space_scores, z, t)
+        tl = self.timel(time_scores, z, t)
 
-        stl = spl + tl
+        # stl = spl + tl
+        stl = spl
 
         if return_both:
             return stl, spl, tl
@@ -230,10 +181,7 @@ class STLoss(nn.Module):
 
 # loss_func_dev = nn.L1Loss() # this was for gamma;
 loss_func_dev = nn.MSELoss()  # MSE looks better with gaussians
-
-# spaceloss_dev = SpaceLoss()
-# timeloss_dev = TimeLoss()
-stloss_dev = STLoss()
+spacetimeloss_dev = SpaceTimeLoss()
 
 
 # add a test
@@ -260,8 +208,91 @@ stloss_dev = STLoss()
 #     return test_loss_total / count
 
 
+class Trainer:
+    """
+    To dev the EnerdiT.
+    """
+
+    def __init__(
+        self,
+    ):
+        pass
+
+    def train_step(self, model, xs, ys, z, optimizer, spacetime_loss, t, dev_loss):
+        optimizer.zero_grad()
+
+        qenergy, space_score, time_score = model(xs, t)
+
+        space_score = torch.permute(space_score, (0, 2, 1))
+
+        # FOr l1 or l2 loss calculation - use last score on the query token
+        # loss_mse_spaces = st_loss(
+        #     space_score[:, :, -1], ys[:, :64]
+        # )  # use only the non-zero
+        # # and on time score
+        # loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
+        # loss = loss_mse_spaces + loss_mse_timesc
+
+        # here in code the label y is the clean
+        # getting losses on last token, the query
+        loss, loss_sp, loss_t = spacetime_loss(
+            space_score[:, :, -1],
+            time_score[:, -1],
+            z[:, :, -1],
+            t[-1],
+            return_both=True,
+        )
+
+        # loss =dev_loss(space_score[:,:, -1], ys[:, :64])
+        # it is learning with the target y on the space score or time score or sum.
+
+        #######################################
+
+        loss.backward()
+
+        # print("Gradient norms before clipping- they are small not large:")
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         print(f"  {name}: {param.grad.norm().item():.4f}")
+
+        # Apply gradient clipping by norm; just leave it in
+        max_norm = 1.0  # Define the maximum allowed norm
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+
+        # After clipping, inspect gradient norms
+        print("\nGradient norms after clipping:")
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                print(f"  {name}: {param.grad.norm().item():.4f}")
+
+        optimizer.step()
+
+        return (
+            loss_sp.detach().item(),
+            loss_t.detach().item(),  # for debug
+            loss.detach().item(),
+            qenergy.detach()
+            .cpu()
+            .numpy(),  # take out the energy for the context to analyze
+            space_score.detach(),
+            time_score.detach(),
+        )
+
+    def train_loop(
+        self,
+    ):
+        pass
+
+    def eval_step(
+        self,
+    ):
+        pass
+
+
+trainer = Trainer()
+
 ##############Dev train on simple one structure small dataset
-epochs = 30
+epochs = 100
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
@@ -272,9 +303,10 @@ model.to(device)
 batch_count = 0
 energies = []
 for epoch in range(epochs):
-    print("***********STLoss Dev**********No Noise currently")
     print(f"***********Epoch is {epoch}")
     epoch_loss = 0.0
+    energy_epoch = 0.0
+
     for i, data in enumerate(train_loader, 0):
         t, z, target, xs = get_batch_samples(data)
 
@@ -293,7 +325,7 @@ for epoch in range(epochs):
             target.to(device),
             z.to(device),
             optimizer,
-            stloss_dev,
+            spacetimeloss_dev,
             t.to(
                 device
             ),  # t will be time embedded and added to the patch and space embeddings
@@ -323,10 +355,8 @@ for epoch in range(epochs):
 
         epoch_loss += loss
         batch_count += 1
+        energy_epoch += energy.sum()
 
-        # exp.log_metrics(
-        #     {"one -energy=logp in train batch": -energy[0]}, step=batch_count
-        # )
         energies.extend(-energy)
 
         # TODO@DR should not have values outside 0,1 for p
@@ -334,7 +364,7 @@ for epoch in range(epochs):
         #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
         # )
 
-        exp.log_metrics({"batch loss with mse on sp": loss}, step=batch_count)
+        exp.log_metrics({"batch loss": loss}, step=batch_count)
         exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
         exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
@@ -357,14 +387,16 @@ for epoch in range(epochs):
     # test_lossmse_mean = test_eval(model, test_loader, loss_func_dev, t)
     # print(f"Test l1 mean same set each epoch ***********{test_lossmse_mean}*******")
 
-    print(f"Train epoch loss {epoch_loss/train_size}*******")
-
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
+    exp.log_metrics(
+        {"avg epoch energy aka neg loglikel": energy_epoch / batch_count * train_size},
+        step=epoch,
+    )
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
     # stop for debug
-    if batch_count == 3:
-        break
+    # if batch_count == 3:
+    #     break
 
 
 ################so when I train with no noise data, the losses have these non-zero values

@@ -1,6 +1,6 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list 
+### TODO@DR running list [DR is me and I give myself tasks bc I wear many hats and I work alone a lot]
 
     *-1. Mke the Enerditork w: priority 1. 
         - WIP
@@ -9,7 +9,7 @@
            
             - 2. Dev new loss / dgen setup to enable learning.
             
-                - WIP
+                - WIP [not there yet]
                 
            
 

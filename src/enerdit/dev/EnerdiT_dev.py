@@ -99,7 +99,7 @@ class TimeEmbedding(nn.Module):
     def __init__(
         self,
         d_model,
-        frequency_embedding_size=256,
+        frequency_embedding_size=32,
         mint=1 / (10**3),
         maxt=1 / (10 ** (-9)),
     ):
@@ -214,7 +214,6 @@ class PreHead(nn.Module):
         self.silu = nn.SiLU()
 
         # TODO@DR: not sure yet about the modulation.
-        # TODO: @DR a potential differentiable one.
         # TODO@DR also the conditioning on context - might try different
         # ways like a cross-attn layer added in at differnt layers
 
@@ -334,6 +333,7 @@ class EnerdiT(nn.Module):
     ):
         super(EnerdiT, self).__init__()
 
+        # Remove one DyT to see if fewer grads vanish (I think more do)
         self.DyT = DyTanh((context_len, input_dim))
 
         # Can't use the Patch embedder from timm bc my patches already come
@@ -342,17 +342,12 @@ class EnerdiT(nn.Module):
         self.space_embed = SpaceEmbedding(d_model, context_len)
         self.time_embed = TimeEmbedding(
             d_model,
-            frequency_embedding_size=256,
+            frequency_embedding_size=32,
             mint=1 / (10**3),
             maxt=1 / (10 ** (-9)),
         )
 
         ######################################Before this - inputs embedding
-
-        # TODO@DR: see about the time embedder
-
-        # TODO@DR consider a Silu and DyT here maybe as well; though right now the block starts
-        # with dyt
 
         # then comes the list of N EnerdiT blocks
         self.blocks = nn.ModuleList(
@@ -381,24 +376,22 @@ class EnerdiT(nn.Module):
 
         # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
         # with this
-        # def lin_init(module):
-        #     if isinstance(module, nn.Linear):
-        #         # TODO@DR: reconsider later: not learning well with this below at this time in dev
-        #         nn.init.xavier_uniform_(module.weight)
-        #         if module.bias is not None:
-        #             nn.init.constant_(module.bias, 0)
+        def lin_init(module):
+            if isinstance(module, nn.Linear):
+                # TODO@DR: reconsider later: not learning well with this below at this time in dev
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
 
-        # self.apply(lin_init)
+        self.apply(lin_init)
 
         # zero out out layer on the heads TODO@DR: think this again
 
-        # nn.init.constant_(self.space_head.space_head.bias, 0)
-        # nn.init.constant_(self.time_head.time_head.bias, 0)
+        nn.init.constant_(self.space_head.space_head.bias, 0)
+        nn.init.constant_(self.time_head.time_head.bias, 0)
 
-        # TODO@DR: reconsider later: not learning well with this below at this time
-        # nn.init.constant_(self.space_head.space_head.weight, 0)
-        # nn.init.constant_(self.time_head.time_head.weight, 0)
-        # print(f"am I doing this? {self.time_head.time_head.weight}")
+        nn.init.constant_(self.space_head.space_head.weight, 0)
+        nn.init.constant_(self.time_head.time_head.weight, 0)
 
     def forward(self, x, t):
         # print("what shape comes the batch into Enerdit ", x.shape)
@@ -422,6 +415,7 @@ class EnerdiT(nn.Module):
         time_embed = self.time_embed(t)
 
         x = patch_embed + space_embed + time_embed
+        resx = x
 
         ##################Input normalization and embedding area over
 
@@ -429,17 +423,16 @@ class EnerdiT(nn.Module):
         for block in self.blocks:
             x = block(x)
 
-        x = self.prehead_linear(x)
+        # add a residual here
+        x = self.prehead_linear(x) + resx
+
         space_score = self.space_head(x)
-        time_score = self.time_head(x)  # the time head is the same shape now
-        # so take mean of it in energy since it should be a scalar
+        time_score = self.time_head(x)
 
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens
         energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
         # print(f"what is {self.corf}")
-
-        # TODO@DR - reason through context next toward loss
 
         return energy, space_score, time_score
 
