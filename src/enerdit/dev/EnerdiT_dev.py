@@ -307,7 +307,8 @@ class EnerdiTBlock(nn.Module):
         # TODO@DR: will have to checkout the timm implementations as I typically
         # work with HF
 
-    def forward(self, x):
+    def forward(self, x, time_embed):
+        x = torch.cat([x, time_embed], dim=-1)
         x = self.dyt1(x)
         x = x + self.attn(x)
         x = self.dyt2(x)
@@ -432,22 +433,24 @@ class EnerdiT(nn.Module):
 
         time_embed = time_embed.unsqueeze(1)
         time_embed = torch.tile(time_embed, (1, 8, 1))
-        # concat the time embed here
-        x = torch.cat([x, time_embed], dim=-1)
+
+        # concat the time embed in block rather than here
+        # x = torch.cat([x, time_embed], dim=-1)
         # print(f"shape of concat emb {x.shape}") # right so now double d_model
-        resx = x
+
         # TODO@DR: experiment with where to concat the time_embed
-        # and the other archi choices including res and how many dytanh and silus
+        # and the other archi choices including res con and how many dytanh and silus
         # and if to have the prehead at all
 
         ##################Input normalization and embedding area over
 
         # add enerdit blocks
         for block in self.blocks:
-            x = block(x)
+            x = block(x, time_embed)
 
         # add a residual here
-        x = self.prehead_linear(x) + resx
+        x = self.prehead_linear(x)  # the shape out of block is 2*model due to
+        # timeembed concat in block on the embed dimension
 
         space_score = self.space_head(x)
         time_score = self.time_head(x)
