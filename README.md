@@ -20,6 +20,8 @@
                 - now: make the simple synthetic task work.
                     - save dataset to disk. Need to simplify as much as possible
                     to debug the supervision signal.
+
+                    - there is some learning now on the space head; not yet on the time head
                    
                     
 

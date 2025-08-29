@@ -256,7 +256,7 @@ class SpaceLossV2(nn.Module):
         # print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
 
         lspace = weight_factor * ldsm
-        # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
+        print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
         return torch.mean(lspace)
 
 
@@ -328,7 +328,7 @@ class Trainer:
         # put through only the query token (-1) and respectives for in-context
         # in simple, no context, no fused
 
-        _, loss_sp, loss_t = spacetime_loss(
+        loss, loss_sp, loss_t = spacetime_loss(
             space_score,  # this is already shape of patch (not double)
             time_score,  # this is a scalar
             z,  # noise corresponding to query non-padded portion
@@ -343,7 +343,7 @@ class Trainer:
         # This is the MSE for dev purposes when working on archi or datagen
         # and not on losses so that I get a clearer idea of wtf is going on.
 
-        loss = dev_loss(space_score, clean)
+        # loss = dev_loss(space_score, clean)
         # loss = dev_loss(time_score, clean.mean())
         # it is learning with the target y on the space score or time score or sum.
 
@@ -453,8 +453,8 @@ for epoch in range(epochs):
         #     # )
 
         exp.log_metrics({"batch loss": loss}, step=batch_count)
-    #     exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
-    #     exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
     #     # CHeck that the weights are updating (look at several)
     #     for name, param in model.named_parameters():
