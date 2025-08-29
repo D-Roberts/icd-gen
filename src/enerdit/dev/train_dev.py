@@ -100,7 +100,8 @@ class TimeLossV1(nn.Module):
         """take average over minibatch in this implementation
         this is for one time t;
 
-        only on the query
+        only on the query TODO@DR: There is a bug in here see V2 if I go back to
+        this.
         """
         bs, d = z.shape
 
@@ -153,15 +154,6 @@ class TimeLossV2(nn.Module):
         # it can learn mse(y,x) right now so why not this?
 
         print(f"time_loss {time_match.mean()}")
-
-        # time l begins*********************
-        # time l weight_factor 1.896801116174629e-08
-        # time l normedsq 9208.251953125
-        # parans_term2 -59256904.0
-        # time_score -0.0014224419137462974
-        # time_loss 332987168.0
-        # time l ends*********************
-
         print(f"time l ends*********************")
 
         return torch.mean(time_match)
@@ -176,6 +168,10 @@ class SpaceLossV1(nn.Module):
         """
         use t from query last token. tt is the t from uniform on seq
         sp and z correspond to query token
+
+        TODO@DR: there is a bug on t I think - see message in TimeLossV1
+        if I end up coming back to V1 but I am not certain this is
+        the right supervision for the heads.
 
         """
         # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
@@ -194,13 +190,9 @@ class SpaceLossV1(nn.Module):
         term2 = z / torch.sqrt(torch.tensor(d))
 
         # print(f"what is torch.sqrt(t / d) in space loss {torch.sqrt(t / d)}")
-        # a very small number
-
-        # mult a 0.5 from the analytical of U on term1
         subtract = term1 - term2
         # print(f"in space loss subtr shape {subtract.shape}") #3, 64
 
-        # zero grads come due a lot to very small term1
         lspace = (torch.norm(subtract, p=2, dim=1)) ** 2
 
         # test to see if grads if mse like loss
@@ -245,16 +237,7 @@ class SpaceLossV2(nn.Module):
         weight_factor = t / d  # this is safe, d is never 0
 
         print(f"weight_factor in spl {weight_factor}")
-
-        # subtract gets very high and then ldsm very very high
-        # weight_factor in spl 1.942039951075003e-08
-        # check values of space score 0.02238388918340206
-        # check values of squery 0.5388038754463196
-        # check values of squery 0.5314796566963196
-        # check values of (query - clean) / t -5892.83837890625
-        # checkvalue of subtract in spacelossv2 5892.86083984375
-        # check shape of subtract in spacelossv2 torch.Size([5, 64])
-        # checkvalue of ldsm in spacelossv2 1196198068224.0
+        # There was a bug here
 
         # multiply along batch dim
         term2 = torch.einsum("bd,b->bd", (query - clean), 1 / t)  # t not zero
@@ -320,30 +303,6 @@ loss_func_dev = nn.MSELoss()  # MSE looks better with gaussians
 spacetimeloss_dev = SpaceTimeLoss()
 
 
-# add a test
-# def test_eval(model, test_loader, loss_func_dev, t):
-#     count = 0.0
-#     test_loss_total = 0.0
-
-#     with torch.no_grad(): #TODO@DR this is not working now after refactor for gaussian
-#         for i, data in enumerate(test_loader, 0):
-#             t, z, samples, targets = get_batch_samples(data)
-#             energy, space_score, time_score = model(samples.to(device), t)
-
-#             # Use the ys label right now with l1 loss
-#             # For architecture dev
-
-#             preds = torch.permute(space_score, (0, 2, 1))
-#             # print(f"for L1 preds which are the space_score {preds.shape} and targets {ys.shape}")
-
-#             # FOr l1 loss calculation - use last score on the query token
-#             test_loss = loss_func_dev(preds[:, :, -1], targets.to(device)).item()
-
-#         test_loss_total += test_loss
-#         count += 1
-#     return test_loss_total / count
-
-
 class Trainer:
     """
     To dev the EnerdiT.
@@ -359,28 +318,20 @@ class Trainer:
 
         qenergy, space_score, time_score = model(xs, t)
 
-        space_score = torch.permute(space_score, (0, 2, 1))
-
-        # FOr l1 or l2 loss calculation - use last score on the query token
-        # loss_mse_spaces = st_loss(
-        #     space_score[:, :, -1], ys[:, :64]
-        # )  # use only the non-zero
-        # # and on time score
-        # loss_mse_timesc = st_loss(time_score[:, -1], ys[:, :64].mean(dim=-1))
-        # loss = loss_mse_spaces + loss_mse_timesc
-
-        # here in code the label y is the clean
-        # getting losses on last token, the query
+        # no need for simple img level
+        # space_score = torch.permute(space_score, (0, 2, 1))
 
         # print(f"so t is {t}")
 
-        # put through only the query token and respectives
+        # put through only the query token (-1) and respectives for in-context
+        # in simple, no context, no fused
+
         loss, loss_sp, loss_t = spacetime_loss(
-            space_score[:, :, -1],  # this is already shape of patch (not double)
-            time_score[:, -1],  # this is a scalar
-            z[:, :64, -1],  # noise corresponding to query non-padded portion
-            ys[:, :64],  # clean label, non-padding portion
-            xs[:, :64, -1],  # query last token of sequence non-padded portion
+            space_score,  # this is already shape of patch (not double)
+            time_score,  # this is a scalar
+            z,  # noise corresponding to query non-padded portion
+            ys,  # clean label, non-padding portion
+            xs,  # query last token of sequence non-padded portion
             t,  # t is just 1 per batch instance
             qenergy,
             add_U=True,  # if to add the energy regularizer to loss
@@ -396,23 +347,18 @@ class Trainer:
 
         loss.backward()
 
-        # print("Gradient norms before clipping- they are small not large:")
-        # for name, param in model.named_parameters():
-        #     if param.grad is not None:
-        #         print(f"  {name}: {param.grad.norm().item():.4f}")
-
         # Apply gradient clipping by norm; just leave it in although not needed
         # max_norm = 1.0  # Define the maximum allowed norm
         # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
         # After clipping, inspect gradient norms
-        # there is no need for clipping but I'll just leave it for now.
-        print("\nGradients and weights")
-        for name, param in model.named_parameters():
-            if param.grad is not None:
-                # print(f"  {name}: {param.grad.norm().item():.4f}")
-                print(f"  {name}: {param.grad}")
-                print(f"  {name}: {param}")
+        # there is no need for clipping so far.
+        # print("\nGradients and weights")
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         # print(f"  {name}: {param.grad.norm().item():.4f}")
+        #         print(f"  {name}: {param.grad}")
+        #         print(f"  {name}: {param}")
 
         optimizer.step()
 
@@ -427,27 +373,18 @@ class Trainer:
             time_score.detach(),
         )
 
-    def train_loop(
-        self,
-    ):
-        pass
-
-    def eval_step(
-        self,
-    ):
-        pass
-
 
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 60
+epochs = 1
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
 
 print(model)
 model.to(device)
+print(f"train num batches {train_size}")
 
 batch_count = 0
 energies = []
@@ -458,6 +395,12 @@ for epoch in range(epochs):
 
     for i, data in enumerate(train_loader, 0):
         t, z, target, xs = get_batch_samples(data)
+        print(f"batch is {batch_count}")
+        batch_count += 1
+
+        # stop for debug
+        if batch_count == 3:
+            break
 
         # print(f"returned z.shape {z.shape}") #(B, patc, seq)
         # print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
@@ -468,94 +411,50 @@ for epoch in range(epochs):
         # in the mini batch and will be used in noisy and in loss calculation. Must see about this.
         # maybe randomize per instance.
 
-        loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
-            model,
-            xs.to(device),
-            target.to(device),
-            z.to(device),
-            optimizer,
-            spacetimeloss_dev,
-            t.to(
-                device
-            ),  # t will be time embedded and added to the patch and space embeddings
-            loss_func_dev,
-        )
-        # # TODO@DR: after seeing learning with this loss, experiment with the
-        # # energy regularizer too but not until loss goes down as is
+    #     loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
+    #         model,
+    #         xs.to(device),
+    #         target.to(device),
+    #         z.to(device),
+    #         optimizer,
+    #         spacetimeloss_dev,
+    #         t.to(
+    #             device
+    #         ),
+    #         loss_func_dev,
+    #     )
 
-        # test after time embeds with l1 on space score
-        # loss, energy, sh, th = trainer.train_step(
-        #     model,
-        #     xs.to(device),
-        #     target.to(device),
-        #     optimizer,
-        #     loss_func_dev,
-        #     t.to(
-        #         device
-        #     ),  # t will be time embedded and added to the patch and space embeddings
-        # )
+    #     # print(f"energy on query {energy.shape}") # this is for the minibatch
+    #     # so let's just log the first
 
-        # print(f"energy on query {energy.shape}") # this is for the minibatch
-        # so let's just log the first
+    #     # print(f"space loss is {loss_sp}\n")
+    #     # print(f"time loss is {loss_t}\n")
+    #     print(f"total loss is {loss}\n")
 
-        # print(f"space loss is {loss_sp}\n")
-        # print(f"time loss is {loss_t}\n")
-        print(f"total loss is {loss}\n")
+    #     epoch_loss += loss
+    #     batch_count += 1
+    #     energy_epoch += energy.sum()
 
-        epoch_loss += loss
-        batch_count += 1
-        energy_epoch += energy.sum()
+    #     energies.extend(-energy)
 
-        energies.extend(-energy)
+    #     # TODO@DR should not have values outside 0,1 for p
+    #     # exp.log_metrics(
+    #     #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
+    #     # )
 
-        # TODO@DR should not have values outside 0,1 for p
-        # exp.log_metrics(
-        #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
-        # )
+    #     exp.log_metrics({"batch loss": loss}, step=batch_count)
+    #     exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+    #     exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
-        exp.log_metrics({"batch loss": loss}, step=batch_count)
-        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
-        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
-
-        # exp.log_metrics({"Dev train spacehead-only batch query -energy=logp": -energy[:,-1]}, step=batch_count)
-        # exp.log_metrics({"Dev train spacehead-only batch p": torch.exp(-energy)}, step=batch_count)
-        # print(f"space score shape {sh.shape} and values {sh}\n") #. values are changing
-
-        # CHeck that the weights are updating
+    #     # CHeck that the weights are updating (look at several)
     #     for name, param in model.named_parameters():
     #         print(name)
     #         if param.grad is not None:
     #             # if name == "space_head.space_head.weight": # yes weights are changing
     #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
-    # # # scheduler.step()  # step the learning rate; if not cosine then no scheduler
-    # print("\tlast LR:", scheduler.get_last_lr())
-
-    # eval once per epoch in dev
-    # with MSE in gaussians
-    # test_lossmse_mean = test_eval(model, test_loader, loss_func_dev, t)
-    # print(f"Test l1 mean same set each epoch ***********{test_lossmse_mean}*******")
-
-    exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
-    exp.log_metrics(
-        {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
-        step=epoch,
-    )
-    # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
-
-    # stop for debug
-    # if batch_count == 2:
-    #     break
-
-###########################later
-# print(len(energies))
-# print(energies)
-# # Create the histogram
-# plt.hist(energies, bins=30, color='skyblue', edgecolor='black')
-
-# # Add labels and a title
-# plt.xlabel('Value')
-# plt.ylabel('Frequency')
-# plt.title('Distribution of logp')
-# # Display the plot
-# plt.show()
+    # exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
+    # exp.log_metrics(
+    #     {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
+    #     step=epoch,
+    # )

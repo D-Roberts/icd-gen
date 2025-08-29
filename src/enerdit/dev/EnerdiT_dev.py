@@ -174,22 +174,40 @@ class EnerdiTFinal(nn.Module):
         """
         # only use the non-zero portion of the noisy query
 
-        noisy = torch.permute(noisy, (0, 2, 1))
-        sh = torch.permute(sh, (0, 2, 1))
-        print(f"in energy calculation noisy shape {noisy.shape}")
-        print(f"in energy calculation space score shape {sh.shape}")
+        print(
+            f"in energy calculation noisy shape is with simple and timm patchify {noisy.shape}"
+        )
+        # (20, 1024)- not patchified
+        # noisy = torch.permute(noisy, (0, 2, 1))
 
-        bs, d, seq_len = noisy.shape
-        d = d // 2
+        print(f"in energy calculation space score shape with simple {sh.shape}")
+        # after unpatchify (b, d)
+        # in simple now not the case anymore
+        # sh = torch.permute(sh, (0, 2, 1))
 
-        # TODO@DR reason again if the first part is the non-zero one
-        query = noisy[:, :d, -1]
-        sp_pred = sh[:, :, -1]  # the space head should already have d // 2
+        # in simple, only batch and full image dim
+        b, d = noisy.shape
+        # d = d // 2
+
+        # query = noisy[:, :d, -1]
+        query = noisy  # in simple this is the query
+
+        # sp_pred = sh[:, :, -1]  # the space head should already have d // 2
+
+        sp_pred = sh  # this needs to come unpatchified with the time embed
+        # and whatever other context removed
+        # just add an average pooling after time embedd removed
 
         # print(f"sp_pred in energy {sp_pred.shape}")
-        # print(f"th shape in energy {th.shape}") #(B, seqlen)
+        print(f"th shape in energy {th.shape}")  # (B, seqlen) with context otw (b,)
         # should be scalar according to theory
-        th_pred = th[:, -1]
+        # th_pred = th[:, -1]
+        th_pred = th
+
+        # In simple, time score also must come unpatchified and one pred only
+        # since no context - so detach time embedd token and average pool
+        # IN time head layer
+
         # print(f"th_pred shape in energy {th_pred.shape}") #(B,)
 
         # This is not right because th_pred is a scalar
@@ -211,7 +229,7 @@ class PreHead(nn.Module):
     this is before the two heads
     """
 
-    def __init__(self, context_len, d_model):
+    def __init__(self, context_len, d_model, patch_dim):
         super().__init__()
 
         self.dyt_final = DyTanh((context_len, d_model))
@@ -221,7 +239,7 @@ class PreHead(nn.Module):
         # TODO@DR also the conditioning on context - might try different
         # ways like a cross-attn layer added in at differnt layers
 
-        self.prehead_layer = nn.Linear(d_model, d_model, bias=False)
+        self.prehead_layer = nn.Linear(d_model, patch_dim, bias=False)
 
     def forward(self, x):
         # print("x shape ans it comes into dyt_final", x.shape)
@@ -236,14 +254,17 @@ class TimeHead(nn.Module):
     """
     with a silu and a dyt as in pre-norm but no resid connections
     as of right now
+
+    x comes in (B, d) after unpatch in simple task see more detail in
+    space head
     """
 
-    def __init__(self, d_model, input_dim, context_len):
+    def __init__(self, d_model, input_dim, context_len=None):
         super().__init__()
 
-        self.dyt_time = DyTanh((context_len, d_model))
+        self.dyt_time = DyTanh((input_dim))
         self.silu = nn.SiLU()
-        self.time_head = nn.Linear(d_model, input_dim, bias=True)
+        self.time_head = nn.Linear(input_dim, input_dim, bias=True)
 
     def forward(self, x):
         x = self.dyt_time(x)
@@ -252,7 +273,7 @@ class TimeHead(nn.Module):
         x = self.time_head(x)
 
         # print("shape of x as it comes out of time head ", x.shape)
-        # (B, seq_len, patch dim)
+        # (B, seq_len, patch dim) with context
         # add an average pooling layer in time head since it is supposed
         # to be a U partial wrt t, a scalar
         return x.mean(-1)
@@ -261,17 +282,23 @@ class TimeHead(nn.Module):
 class SpaceHead(nn.Module):
     """
     with a silu and a dyt as in pre-norm but no resid connections
+
+    For simple task - need to detach time embed and unpatchify
+
+    for simple img level no context task x here is already (B, d)
     """
 
-    def __init__(self, d_model, input_dim, context_len):
+    def __init__(self, d_model, input_dim, context_len=None):
         super().__init__()
 
-        self.dyt_space = DyTanh(shape_in=(context_len, d_model))
+        self.dyt_space = DyTanh(shape_in=(input_dim))
         self.silu = nn.SiLU()
-        self.space_head = nn.Linear(d_model, input_dim, bias=True)
+        self.space_head = nn.Linear(input_dim, input_dim, bias=True)
 
     def forward(self, x):
-        # print(f"shape in head {x.shape}") # [3, 8, 4] is (B, seq_len, d_model)
+        print(f"shape in head {x.shape}")  # [3, 8, 4] is (B, seq_len, d_model)
+        # in simple task: torch.Size([20, 257, 32])
+        # detach time embed before
         x = self.dyt_space(x)
         x = self.silu(x)
         x = self.space_head(x)
@@ -339,6 +366,7 @@ class EnerdiT(nn.Module):
         num_heads,
         depth,
         mlp_ratio,
+        patch_dim=4,
     ):
         super(EnerdiT, self).__init__()
 
@@ -350,7 +378,7 @@ class EnerdiT(nn.Module):
 
         # self.patch_embed = PatchEmbedding(input_dim, d_model)
 
-        # need to patchify let's make patch size 2
+        # need to patchify let's make patch size 2 - not sure this works right
         self.patch_embed = PatchEmbed(32, 2, 1, d_model, bias=True)
         self.space_embed = SpaceEmbedding(d_model, context_len)
         self.time_embed = TimeEmbedding(
@@ -361,6 +389,7 @@ class EnerdiT(nn.Module):
         )
 
         ######################################Before this - inputs embedding
+        # context len now is number of patches from Patch making ViT style
 
         # then comes the list of N EnerdiT blocks
         self.blocks = nn.ModuleList(
@@ -374,12 +403,21 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        # self.prehead_linear = PreHead(context_len, 2 * d_model)
+        self.prehead_linear = PreHead(context_len, d_model, patch_dim)
+
+        print(f"is context len the right thing {context_len}")
 
         # a kind of unembed; aim to use only on the non-zero part of
         # the noisy query and clean label
-        self.time_head = TimeHead(d_model, input_dim // 2, context_len)
-        self.space_head = SpaceHead(d_model, input_dim // 2, context_len)
+
+        # in simple - at full image with no context and unfused
+        # model predicts the full image but in patchified form
+        # context_len here is just the number of patches ViT style
+        # so I think input dim should be patch dim here
+        # since I aimed for patch dim of 2 should have patch size of 4
+
+        self.time_head = TimeHead(d_model, input_dim, context_len)
+        self.space_head = SpaceHead(d_model, input_dim, context_len)
 
         # self.pre_init() #TODO@DR see later about custom init - right now is hurting
 
@@ -408,6 +446,16 @@ class EnerdiT(nn.Module):
 
         nn.init.constant_(self.space_head.space_head.weight, 0)
         nn.init.constant_(self.time_head.time_head.weight, 0)
+
+    def unpatchify(self, x):
+        """
+        x: (B, num_patches, patch_dim)
+
+        imgs (B, D) in simple (B, 1024)
+        """
+        b, num_p, pdim = x.shape
+        x = x.reshape(shape=(b, num_p * pdim))
+        return x
 
     def forward(self, x, t):
         # print("what shape comes the batch into Enerdit ", x.shape)
@@ -471,9 +519,17 @@ class EnerdiT(nn.Module):
         for block in self.blocks:
             x = block(x, time_embed)
 
-        # add a residual here
-        # x = self.prehead_linear(x)  # the shape out of block is 2*model due to
-        # timeembed concat in block on the embed dimension
+        # I need to detach timeembed now before heads
+        # But I need the prehead layer to reshape first
+
+        x = self.prehead_linear(x)
+
+        x = x[:, :-1, :]
+
+        # And unpatchify here before heads
+        x = self.unpatchify(x)
+
+        print(f"shape of x before heads {x.shape}")
 
         space_score = self.space_head(x)
         time_score = self.time_head(x)
