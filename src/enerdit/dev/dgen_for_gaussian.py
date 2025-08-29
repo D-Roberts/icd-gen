@@ -283,7 +283,7 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 # print(f"label {Label}")
 
 # print(y_train.shape)
-batch_size = 20
+batch_size = 512
 train_size = x_train.shape[0]
 
 train_dataset = DatasetWrapper(x_train, y_train)

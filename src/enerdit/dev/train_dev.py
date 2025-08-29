@@ -132,29 +132,29 @@ class TimeLossV2(nn.Module):
 
         weight_factor = (t / d) ** 2
 
-        print(f"\ntime l begins*********************")
+        # print(f"\ntime l begins*********************")
 
-        print(f"time l weight_factor {weight_factor}")
+        # print(f"time l weight_factor {weight_factor}")
         normedsq = torch.norm(query - clean, p=2, dim=-1) ** 2
 
-        print(f"time l normedsq {normedsq.mean()}")  # one large
+        # print(f"time l normedsq {normedsq.mean()}")  # one large
         parans_term2 = d / (2 * t) - normedsq / (2 * (t**2))
-        print(f"d / (2 * t) {d / (2 * t)}")
-        print(f"(2 * (t**2)) {(2 * (t**2))}")
-        print(f"normedsq / (2 * (t**2)) {normedsq / (2 * (t**2))}")
+        # print(f"d / (2 * t) {d / (2 * t)}")
+        # print(f"(2 * (t**2)) {(2 * (t**2))}")
+        # print(f"normedsq / (2 * (t**2)) {normedsq / (2 * (t**2))}")
 
-        print(f"parans_term2 {parans_term2.mean()}")
+        # print(f"parans_term2 {parans_term2.mean()}")
 
         parans_term = time_score - parans_term2
 
-        print(f"time_score {time_score.mean()}")
+        # print(f"time_score {time_score.mean()}")
         time_match = weight_factor * (parans_term**2)
         # there is a pattern/signal in this suppervision on the time score
         # so the net should be able to learn it.
         # it can learn mse(y,x) right now so why not this?
 
-        print(f"time_loss {time_match.mean()}")
-        print(f"time l ends*********************")
+        # print(f"time_loss {time_match.mean()}")
+        # print(f"time l ends*********************")
 
         return torch.mean(time_match)
 
@@ -214,15 +214,15 @@ class SpaceLossV2(nn.Module):
         same for z and query and label
 
         """
-        print(f"what is shape - the clean in SpaceLoss {clean.shape}")
-        print(f"what is shape - the query in SpaceLoss {query.shape}")
-        print(f"what is shape - the z in SpaceLoss {z.shape}")
+        # print(f"what is shape - the clean in SpaceLoss {clean.shape}")
+        # print(f"what is shape - the query in SpaceLoss {query.shape}")
+        # print(f"what is shape - the z in SpaceLoss {z.shape}")
 
         # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
         # so here x is (B, dim, seq_len) while y=clean target on last noisy query
         # is (B, dim)
 
-        print(f"what is t here {t}")
+        # print(f"what is t here {t}")
         # now they match
 
         # sanity checks / debugging
@@ -236,24 +236,24 @@ class SpaceLossV2(nn.Module):
 
         weight_factor = t / d  # this is safe, d is never 0
 
-        print(f"weight_factor in spl {weight_factor}")
+        # print(f"weight_factor in spl {weight_factor}")
         # There was a bug here
 
         # multiply along batch dim
         term2 = torch.einsum("bd,b->bd", (query - clean), 1 / t)  # t not zero
         subtract = space_score - term2
-        print(f"check values of space score {torch.mean(space_score)}")
+        # print(f"check values of space score {torch.mean(space_score)}")
 
-        print(f"check values of squery {torch.mean(clean)}")
-        print(f"check values of squery {torch.mean(query)}")
-        print(f"check values of (query - clean) / t {torch.mean(term2)}")
+        # print(f"check values of squery {torch.mean(clean)}")
+        # print(f"check values of squery {torch.mean(query)}")
+        # print(f"check values of (query - clean) / t {torch.mean(term2)}")
 
-        print(f"checkvalue of subtract in spacelossv2 {subtract.mean()}")
-        print(f"check shape of subtract in spacelossv2 {subtract.shape}")
+        # print(f"checkvalue of subtract in spacelossv2 {subtract.mean()}")
+        # print(f"check shape of subtract in spacelossv2 {subtract.shape}")
 
         ldsm = (torch.norm(subtract, p=2, dim=1)).pow(2)
 
-        print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
+        # print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
 
         lspace = weight_factor * ldsm
         # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
@@ -290,7 +290,7 @@ class SpaceTimeLoss(nn.Module):
         lamu = 0.001
         if add_U:
             stl += lamu * U.mean()  # minibatch average
-            print(f"U in spacetime loss {U.mean()}")
+            # print(f"U in spacetime loss {U.mean()}")
 
         if return_both:
             return stl, spl, tl
@@ -313,10 +313,12 @@ class Trainer:
     ):
         pass
 
-    def train_step(self, model, xs, ys, z, optimizer, spacetime_loss, t, dev_loss):
+    def train_step(
+        self, model, noisy, clean, z, optimizer, spacetime_loss, t, dev_loss
+    ):
         optimizer.zero_grad()
 
-        qenergy, space_score, time_score = model(xs, t)
+        qenergy, space_score, time_score = model(noisy, t)
 
         # no need for simple img level
         # space_score = torch.permute(space_score, (0, 2, 1))
@@ -326,12 +328,12 @@ class Trainer:
         # put through only the query token (-1) and respectives for in-context
         # in simple, no context, no fused
 
-        loss, loss_sp, loss_t = spacetime_loss(
+        _, loss_sp, loss_t = spacetime_loss(
             space_score,  # this is already shape of patch (not double)
             time_score,  # this is a scalar
             z,  # noise corresponding to query non-padded portion
-            ys,  # clean label, non-padding portion
-            xs,  # query last token of sequence non-padded portion
+            clean,  # clean label, non-padding portion
+            noisy,  # query last token of sequence non-padded portion
             t,  # t is just 1 per batch instance
             qenergy,
             add_U=True,  # if to add the energy regularizer to loss
@@ -339,8 +341,9 @@ class Trainer:
         )
 
         # This is the MSE for dev purposes when working on archi or datagen
-        # and not on losses
-        # loss = dev_loss(space_score[:, :, -1], ys[:, :64])
+        # and not on losses so that I get a clearer idea of wtf is going on.
+
+        loss = dev_loss(space_score, clean)
         # it is learning with the target y on the space score or time score or sum.
 
         #######################################
@@ -377,7 +380,7 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 1
+epochs = 5
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
@@ -396,65 +399,59 @@ for epoch in range(epochs):
     for i, data in enumerate(train_loader, 0):
         t, z, clean, noisy = get_batch_samples(data)
         print(f"batch index is {batch_count}")
+        # stop for debug ********************************************
+        # if batch_count == 5:
+        #     break
         batch_count += 1
-        print(f"t is {t} of shape {t.shape}")
-        print(f"\clean is {clean} of shape {clean.shape}")
-        print(f"\n noisy is {noisy} of shape {noisy.shape}")
-        print(f"\nz is {z} of shape {z.shape}")
-        sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
-        print(
-            f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
-        )
+        # print(f"t is {t} of shape {t.shape}") # shape B
+        # print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
+        # print(f"\n noisy is {noisy} of shape {noisy.shape}")
+        # print(f"\nz is {z} of shape {z.shape}")
+        # sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
+        # print(
+        #     f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
+        # )
         # they do seem equal
         # data from simple task looks ok so far; noisy = clean +sqrt(t)z
         # with clean from N(0, Id)*4 (stdev = 4) and z from N(0, I)
         # I put t in 0.01 to 100
-
-        # stop for debug
-        if batch_count == 1:
-            break
-
-        # print(f"returned z.shape {z.shape}") #(B, patc, seq)
-        # print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
-        # print(t) # a seq len
-        # print(f"target shape {target.shape}") #(B, 2patch)
+        # b = 20, d = 1024 here; 4000 train batches
+        # or b = 512; train = 156
 
         # TODO@DR: note that right now the same t will land on the last token / query for each instance
         # in the mini batch and will be used in noisy and in loss calculation. Must see about this.
-        # maybe randomize per instance.
+        # maybe randomize per instance. [for in-context patch level problem]
 
-    #     loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
-    #         model,
-    #         xs.to(device),
-    #         target.to(device),
-    #         z.to(device),
-    #         optimizer,
-    #         spacetimeloss_dev,
-    #         t.to(
-    #             device
-    #         ),
-    #         loss_func_dev,
-    #     )
+        loss_sp, loss_t, loss, energy, sh, th = trainer.train_step(
+            model,
+            noisy.to(device),
+            clean.to(device),
+            z.to(device),
+            optimizer,
+            spacetimeloss_dev,
+            t.to(device),
+            loss_func_dev,
+        )
 
-    #     # print(f"energy on query {energy.shape}") # this is for the minibatch
-    #     # so let's just log the first
+        #     # print(f"energy on query {energy.shape}") # this is for the minibatch
+        #     # so let's just log the first
 
-    #     # print(f"space loss is {loss_sp}\n")
-    #     # print(f"time loss is {loss_t}\n")
-    #     print(f"total loss is {loss}\n")
+        #     # print(f"space loss is {loss_sp}\n")
+        #     # print(f"time loss is {loss_t}\n")
+        print(f"total loss is {loss}\n")
 
-    #     epoch_loss += loss
-    #     batch_count += 1
-    #     energy_epoch += energy.sum()
+        epoch_loss += loss
+        #     batch_count += 1
+        #     energy_epoch += energy.sum()
 
-    #     energies.extend(-energy)
+        #     energies.extend(-energy)
 
-    #     # TODO@DR should not have values outside 0,1 for p
-    #     # exp.log_metrics(
-    #     #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
-    #     # )
+        #     # TODO@DR should not have values outside 0,1 for p
+        #     # exp.log_metrics(
+        #     #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
+        #     # )
 
-    #     exp.log_metrics({"batch loss": loss}, step=batch_count)
+        exp.log_metrics({"batch loss": loss}, step=batch_count)
     #     exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
     #     exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
@@ -465,7 +462,7 @@ for epoch in range(epochs):
     #             # if name == "space_head.space_head.weight": # yes weights are changing
     #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
-    # exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
+    exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
     # exp.log_metrics(
     #     {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
     #     step=epoch,

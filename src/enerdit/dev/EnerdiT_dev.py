@@ -174,13 +174,13 @@ class EnerdiTFinal(nn.Module):
         """
         # only use the non-zero portion of the noisy query
 
-        print(
-            f"in energy calculation noisy shape is with simple and timm patchify {noisy.shape}"
-        )
+        # print(
+        #     f"in energy calculation noisy shape is with simple and timm patchify {noisy.shape}"
+        # )
         # (20, 1024)- not patchified
         # noisy = torch.permute(noisy, (0, 2, 1))
 
-        print(f"in energy calculation space score shape with simple {sh.shape}")
+        # print(f"in energy calculation space score shape with simple {sh.shape}")
         # after unpatchify (b, d)
         # in simple now not the case anymore
         # sh = torch.permute(sh, (0, 2, 1))
@@ -193,13 +193,12 @@ class EnerdiTFinal(nn.Module):
         query = noisy  # in simple this is the query
 
         # sp_pred = sh[:, :, -1]  # the space head should already have d // 2
-
         sp_pred = sh  # this needs to come unpatchified with the time embed
         # and whatever other context removed
         # just add an average pooling after time embedd removed
 
         # print(f"sp_pred in energy {sp_pred.shape}")
-        print(f"th shape in energy {th.shape}")  # (B, seqlen) with context otw (b,)
+        # print(f"th shape in energy {th.shape}")  # (B, seqlen) with context otw (b,)
         # should be scalar according to theory
         # th_pred = th[:, -1]
         th_pred = th
@@ -296,7 +295,7 @@ class SpaceHead(nn.Module):
         self.space_head = nn.Linear(input_dim, input_dim, bias=True)
 
     def forward(self, x):
-        print(f"shape in head {x.shape}")  # [3, 8, 4] is (B, seq_len, d_model)
+        # print(f"shape in head {x.shape}")  # [3, 8, 4] is (B, seq_len, d_model)
         # in simple task: torch.Size([20, 257, 32])
         # detach time embed before
         x = self.dyt_space(x)
@@ -338,8 +337,8 @@ class EnerdiTBlock(nn.Module):
         # work with HF
 
     def forward(self, x, time_embed):
-        print(f"shape of time emebde w simple {time_embed.shape}")
-        print(f"shape of x near time emebde w simple {x.shape}")
+        # print(f"shape of time emebde w simple {time_embed.shape}")
+        # print(f"shape of x near time emebde w simple {x.shape}")
         x = torch.cat([x, time_embed], dim=1)
         x = self.dyt1(x)
         x = x + self.attn(x)
@@ -405,7 +404,7 @@ class EnerdiT(nn.Module):
 
         self.prehead_linear = PreHead(context_len, d_model, patch_dim)
 
-        print(f"is context len the right thing {context_len}")
+        # print(f"is context len the right thing {context_len}")
 
         # a kind of unembed; aim to use only on the non-zero part of
         # the noisy query and clean label
@@ -482,7 +481,7 @@ class EnerdiT(nn.Module):
         # [20, 256, 32] # Why 32? doesn't seem right patch size should be 4
 
         patch_embed = self.patch_embed(x)
-        print(f"patch_embed now after timm in simple {patch_embed.shape}")
+        # print(f"patch_embed now after timm in simple {patch_embed.shape}")
 
         space_embed = self.space_embed(
             patch_embed
@@ -528,8 +527,7 @@ class EnerdiT(nn.Module):
 
         # And unpatchify here before heads
         x = self.unpatchify(x)
-
-        print(f"shape of x before heads {x.shape}")
+        # print(f"shape of x before heads {x.shape}")
 
         space_score = self.space_head(x)
         time_score = self.time_head(x)
@@ -537,7 +535,7 @@ class EnerdiT(nn.Module):
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens
         energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
-        print(f"what is {self.corf}")
+        # print(f"what is {self.corf}")
 
         return energy, space_score, time_score
 
