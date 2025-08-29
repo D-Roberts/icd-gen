@@ -95,61 +95,75 @@ class GroupSampler(DataSampler):
 
         return torch.randperm(D).view(L, -1)
 
-    def sample_xs(self, seeds=None):
-        """w is the features we construct signal to noise for structure
+    # def sample_xs(self, seeds=None):
+    #     """w is the features we construct signal to noise for structure
 
-        y is  from the classification task in jelassi paper.
+    #     y is  from the classification task in jelassi paper.
 
-        Control gamma noise param as a function of y.
-        Instead could depend on the group index.
+    #     Control gamma noise param as a function of y.
+    #     Instead could depend on the group index.
 
-        On enerdit - put gaussian noise in instead TODO@DR: reason how
-        this needs to change.
+    #     On enerdit - put gaussian noise in instead TODO@DR: reason how
+    #     this needs to change.
 
-        Not sure yet how to best make in context, various options.
-        Batch context with each batch a str seems apt.
+    #     Not sure yet how to best make in context, various options.
+    #     Batch context with each batch a str seems apt.
+    #     """
+
+    #     # make a feature here; the signal in the dataset
+    #     w = torch.randn(self.d)
+    #     w /= w.square().sum().sqrt()
+
+    #     y = torch.randn(
+    #         self.N
+    #     ).sign()  # this is what was the classification label in jelassi, 1 or -1, per instance
+    #     # leave it
+    #     q = math.log(self.d) / self.D
+    #     sigma = 1 / math.sqrt(self.d)
+    #     noise = (
+    #         torch.randn(self.N, self.D, self.d) * sigma
+    #     )  # gaussian noise with this sigma
+    #     X = torch.zeros(self.N, self.D, self.d)
+
+    #     for i in range(self.N):  # every example
+    #         l = torch.randint(self.L, (1,))[0]  # a group index
+    #         # print("l ", l)
+    #         # print("partition", self.S)  #
+    #         R = self.S[l]
+    #         for j in range(self.D):
+    #             if (
+    #                 j in R
+    #             ):  # this here creates artif groups by snr; X[i][j] is meant to be the pixel
+    #                 X[i][j] = y[i] * w + noise[i][j]
+    #             else:  # TODO@DR: rethink this SNR
+    #                 prob = 2 * (torch.rand(1) - 0.5)
+    #                 if prob > 0 and prob < q / 2:
+    #                     delta = 1
+    #                 elif prob < 0 and prob > -q / 2:
+    #                     delta = -1
+    #                 else:
+    #                     delta = 0
+    #                 X[i][j] = delta * w + noise[i][j]
+
+    #     # TODO@DR: I might need to rethink how the patches in one sample are
+    #     # and how in context is defined
+
+    #     # last dim can be viewed as a patch flattened
+    #     return X, y, w, self.S
+
+    def sample_simple(self, d=1024, n=100000, seeds=None):
+        """the simplest sampling syntethic for enerdit learning debug.
+        d is dimension of patch flattened say 32x32 images
+
+        100,000 samples
+
+        put no context prompt on
+        From N(0, 16Id) so var = 16, stdev = 4
         """
+        torch.manual_seed(0)
+        X = 4 * torch.randn(n, d)
 
-        # make a feature here; the signal in the dataset
-        w = torch.randn(self.d)
-        w /= w.square().sum().sqrt()
-
-        y = torch.randn(
-            self.N
-        ).sign()  # this is what was the classification label in jelassi, 1 or -1, per instance
-        # leave it
-        q = math.log(self.d) / self.D
-        sigma = 1 / math.sqrt(self.d)
-        noise = (
-            torch.randn(self.N, self.D, self.d) * sigma
-        )  # gaussian noise with this sigma
-        X = torch.zeros(self.N, self.D, self.d)
-
-        for i in range(self.N):  # every example
-            l = torch.randint(self.L, (1,))[0]  # a group index
-            # print("l ", l)
-            # print("partition", self.S)  #
-            R = self.S[l]
-            for j in range(self.D):
-                if (
-                    j in R
-                ):  # this here creates artif groups by snr; X[i][j] is meant to be the pixel
-                    X[i][j] = y[i] * w + noise[i][j]
-                else:  # TODO@DR: rethink this SNR
-                    prob = 2 * (torch.rand(1) - 0.5)
-                    if prob > 0 and prob < q / 2:
-                        delta = 1
-                    elif prob < 0 and prob > -q / 2:
-                        delta = -1
-                    else:
-                        delta = 0
-                    X[i][j] = delta * w + noise[i][j]
-
-        # TODO@DR: I might need to rethink how the patches in one sample are
-        # and how in context is defined
-
-        # last dim can be viewed as a patch flattened
-        return X, y, w, self.S
+        return X, None, None, self.S  # leave just so that I don't change all interfaces
 
     def get_X_and_label_unfused(self, X_clean=None):
         """only the x of clean and the label which is the last of x"""
@@ -169,11 +183,15 @@ class GroupSampler(DataSampler):
 
 # Ad hoc testing
 dggen = GroupSampler()
-dataset, y, w, partition = dggen.sample_xs()
-print(dataset.shape, y.shape)
+# The simplest Normal
+dataset, y, w, partition = dggen.sample_simple()
+print(f"shape of simple {dataset.shape}")
 
-X, Label = dggen.get_X_and_label_unfused(dataset)
-print(f"X.shape {X.shape} and label {Label.shape}")  # 20, 8, 64
+# dataset, y, w, partition = dggen.sample_xs()
+# print(dataset.shape, y.shape)
+
+# X, Label = dggen.get_X_and_label_unfused(dataset)
+# print(f"X.shape {X.shape} and label {Label.shape}")  # 20, 8, 64
 
 ##########Get batches first
 
@@ -186,11 +204,12 @@ class DatasetWrapper(Dataset):
         self.y = Y
 
         self.dim_n = self.x.shape[1]
-        self.context_length = self.x.shape[2]
+        # self.context_length = self.x.shape[2] # no context for simple
 
     # Mandatory: Get input pair for training
     def __getitem__(self, idx):
-        return self.x[idx, :, :], self.y[idx, :]
+        # return self.x[idx, :, :], self.y[idx, :]
+        return self.x[idx, :], self.y[idx]  # FOr simple dummy y
 
     # Mandatory: Number of elements in dataset (i.e. size of batch dimension 0)
     def __len__(self):
@@ -207,7 +226,11 @@ def grouped_data_train_test_split_util(
 ):
     # Note that the datagen returns shape (batch, seq len, fused patch dim)
     # the models so far expected a permuted version
-    x_total = torch.permute(x_total, (0, 2, 1))
+
+    # TODO@DR recall this is for simple so no context
+    # x_total = torch.permute(x_total, (0, 2, 1))
+
+    y_total = torch.zeros(x_total.shape[0])  # Dummy for simple
 
     x_total1 = x_total.numpy()  # these come in as tensors
     y_total1 = y_total.numpy()
@@ -217,7 +240,7 @@ def grouped_data_train_test_split_util(
     )  # determines how dataset is split; if no rng passed, create one
 
     # now perform train test split and randomize
-    ntotal = len(y_total)
+    ntotal = len(x_total)
 
     ntest = int(test_ratio * ntotal)
     ntrain = ntotal - ntest
@@ -227,15 +250,18 @@ def grouped_data_train_test_split_util(
     train_indices = rng.choice(train_indices_to_shuffle, ntrain, replace=False)
 
     # grab train data
-    x_train = x_total1[train_indices, :, :]
-    y_train = y_total1[train_indices, :]
+    # x_train = x_total1[train_indices, :, :]
+    x_train = x_total1[train_indices, :]  # for simple
+
+    y_train = y_total1[train_indices]
     # grab test data
-    x_test = x_total1[test_indices, :, :]
-    y_test = y_total1[test_indices, :]
+    x_test = x_total1[test_indices, :]  # for simple no context
+    x_test = x_total1[test_indices, :]
+    y_test = y_total1[test_indices]
 
     return (
         torch.from_numpy(x_train),
-        torch.from_numpy(y_train),
+        torch.from_numpy(y_train),  # No y when sampling simple
         torch.from_numpy(x_test),
         torch.from_numpy(y_test),
     )
@@ -244,8 +270,12 @@ def grouped_data_train_test_split_util(
 # Get train and test TODO@DR reason why split train test it this way vs generate
 # a separate test dataset like in jelassi for the grouped case
 
+# When sampling simple
+# x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
+#     dataset, None, 0.2, as_torch=True, rng=None
+# )
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
-    X, Label, 0.2, as_torch=True, rng=None
+    dataset, None, 0.2, as_torch=True, rng=None
 )
 
 # print(f"x train shape {x_train.shape}") #b, patchdim, seqlen
@@ -253,7 +283,7 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 # print(f"label {Label}")
 
 # print(y_train.shape)
-batch_size = 5
+batch_size = 20
 train_size = x_train.shape[0]
 
 train_dataset = DatasetWrapper(x_train, y_train)
@@ -312,8 +342,10 @@ def get_batch_samples(data):
     inputs, target = data
     # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
-    inputs, target = normalize(inputs, target)
-    b, pdim, seq_len = inputs.shape
+    # inputs, target = normalize(inputs, target) # Skip for simple
+
+    # b, pdim, seq_len = inputs.shape # no context in simple
+    b, pdim = inputs.shape
 
     # Sample time steps
     # tmin = torch.tensor(10 ** (-9))
@@ -327,24 +359,21 @@ def get_batch_samples(data):
 
     logt_distrib = Uniform(low=torch.tensor([logtmin]), high=torch.tensor([logtmax]))
     logt = logt_distrib.sample(torch.tensor([b]))
-
     t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
     # print(f"generated t is {t} and shape {t.shape}")
-
     # print(f"the t {t}")
-    sqrtt = torch.sqrt(t)
-    # print(f"the sqrtt {sqrtt}")
-    # get z for this batch
+
+    # get z for this batch from N(0,I)
     z = torch.randn_like(inputs)
     # print(f"z shape {z.shape}")
     sqrttz = torch.zeros_like(z)
 
-    # DO some silly code with loop since it is late and I am tired.
     # I am applying the same t noise accross the sequence in one instance
     # and diffeernt t accross the minibatch
-    for i in range(b):
-        # print(f"sqrtt[i].shape {z[i].shape}")
-        sqrttz[i] += sqrtt[i] * z[i]
+
+    # sqrttz = torch.einsum('bcd,b->bd', z, torch.sqrt(t))
+    sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))  # For simple only 2-dim
+
     # print(f"the noise*sqrtt last token {sqrttz[0,:,-1]}")
 
     # test that the broadcasting happened as expected
@@ -360,13 +389,19 @@ def get_batch_samples(data):
     # )
 
     # Get fused seq for the batch; query is last; noisy first
-    fused = get_fused_sequences(inputs, noisy)  # this is a batch
+
+    # No fusing no prompt on simple
+    # fused = get_fused_sequences(inputs, noisy)  # this is a batch
+    fused = None
+
     # print(f"the fused shape {fused.shape}") # ok double patch dim
     # print(f"the fused last otken chekc {fused[2,:,-1]}")
     # print(f"the noisy last otken chekc {noisy[2,:,-1]}") # i think as expected
 
     # so now have inputs (clean), target, z, noisy only, fused, t
-    return t, z, target, fused
+
+    # return t, z, target, fused
+    return t, z, inputs, noisy  # for simple
 
 
 # for i, data in enumerate(train_loader):

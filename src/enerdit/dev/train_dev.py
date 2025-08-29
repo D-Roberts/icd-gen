@@ -69,9 +69,9 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 torch.manual_seed(0)
 
 model = EnerdiT(
-    context_len=8,
+    context_len=1,  # no context in simple; will have to change everything
     d_model=32,
-    input_dim=128,  # the way datagen is setup now - comes in one flattened
+    input_dim=1024,  # the way datagen is setup now - comes in one flattened, including in simple
     cf1_init_value=0.5,
     num_heads=1,
     depth=1,
