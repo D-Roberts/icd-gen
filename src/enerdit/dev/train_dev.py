@@ -394,12 +394,21 @@ for epoch in range(epochs):
     energy_epoch = 0.0
 
     for i, data in enumerate(train_loader, 0):
-        t, z, target, xs = get_batch_samples(data)
+        t, z, clean, noisy = get_batch_samples(data)
         print(f"batch index is {batch_count}")
         batch_count += 1
-        print(f"t is {t}")
-        print(f"\ntarget is {target}")
-        print(f"\nxs is {xs}")
+        print(f"t is {t} of shape {t.shape}")
+        print(f"\clean is {clean} of shape {clean.shape}")
+        print(f"\n noisy is {noisy} of shape {noisy.shape}")
+        print(f"\nz is {z} of shape {z.shape}")
+        sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
+        print(
+            f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
+        )
+        # they do seem equal
+        # data from simple task looks ok so far; noisy = clean +sqrt(t)z
+        # with clean from N(0, Id)*4 (stdev = 4) and z from N(0, I)
+        # I put t in 0.01 to 100
 
         # stop for debug
         if batch_count == 1:
