@@ -36,7 +36,7 @@ class DyTanh(nn.Module):
         return x
 
 
-# Embed
+# Embed - Not used in the simple datagen
 # now the sequence has double width due to concat clean and noisy
 class PatchEmbedding(nn.Module):
     def __init__(self, dim_in, d_model):
@@ -61,7 +61,7 @@ class PatchEmbedding(nn.Module):
 # I decided to call them Space Embeddings. Seem to me more apt
 # Since Pos was from language really
 class SpaceEmbedding(nn.Module):
-    def __init__(self, d_model, max_len=200):
+    def __init__(self, d_model, max_len=512):
         super().__init__()
         se = torch.zeros(max_len, d_model)  # (seq_len, d_model)
         spatial = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -313,9 +313,6 @@ class EnerdiTBlock(nn.Module):
     def __init__(self, d_model, context_len, num_heads=1, mlp_ratio=4.0):  # as in DiT
         super().__init__()
 
-        # TODO@DR: will have to check on all the logic of where dyt gets applyied
-        # print(f"context_len, d_model) {context_len, d_model}")
-        # Because concatenated time embeddings double size
         self.dyt1 = DyTanh((context_len, d_model))
 
         self.attn = Attention(
@@ -339,6 +336,8 @@ class EnerdiTBlock(nn.Module):
     def forward(self, x, time_embed):
         # print(f"shape of time emebde w simple {time_embed.shape}")
         # print(f"shape of x near time emebde w simple {x.shape}")
+
+        # Condition on the time embedding in each block (only 1 block used at this time)
         x = torch.cat([x, time_embed], dim=1)
         x = self.dyt1(x)
         x = x + self.attn(x)
@@ -355,34 +354,38 @@ class EnerdiT(nn.Module):
 
     def __init__(
         self,
-        context_len,
         d_model,
-        # input_dim=10, # right now the patches come in flattened from datagen
-        # output_dim=10,
-        # channels=3,
         input_dim,  # the way datagen is setup now - comes in one flattened
         cf1_init_value,
         num_heads,
         depth,
         mlp_ratio,
-        patch_dim=4,
+        patch_dim=2,
+        context_len=None,
     ):
         super(EnerdiT, self).__init__()
 
-        # Remove one DyT to see if fewer grads vanish (I think more do)
-        self.DyT = DyTanh((context_len, input_dim))
-
         # Can't use the Patch embedder from timm bc my patches already come
-        # in patchified and fused.
+        # in patchified for in-context problem.
 
         # self.patch_embed = PatchEmbedding(input_dim, d_model)
 
-        # need to patchify let's make patch size 2 - not sure this works right
-        self.patch_embed = PatchEmbed(32, 2, 1, d_model, bias=True)
-        self.space_embed = SpaceEmbedding(d_model, context_len)
+        # 1 is for input channesl which is grayscale 1; patch_dim is one dim
+        # so area is p*p; input_dim is likewise h
+        self.h = int(math.sqrt(input_dim))  # for us image comes flattened
+        self.patch_embed = PatchEmbed(self.h, patch_dim, 1, d_model, bias=True)
+
+        # IN simple synthetic image level case, context_len is num of patches
+        if context_len is None:
+            self.context_len = input_dim // (patch_dim * patch_dim)  # 1024 // 4=256
+
+        else:
+            self.context_len = context_len
+
+        self.space_embed = SpaceEmbedding(d_model, self.context_len)
         self.time_embed = TimeEmbedding(
             d_model,
-            frequency_embedding_size=32,
+            frequency_embedding_size=256,
             mint=0,
             maxt=10000,
         )
@@ -393,7 +396,7 @@ class EnerdiT(nn.Module):
         # then comes the list of N EnerdiT blocks
         self.blocks = nn.ModuleList(
             [
-                EnerdiTBlock(d_model, context_len, num_heads, mlp_ratio)
+                EnerdiTBlock(d_model, self.context_len, num_heads, mlp_ratio)
                 for _ in range(depth)
             ]
         )
@@ -402,7 +405,7 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = PreHead(context_len, d_model, patch_dim)
+        self.prehead_linear = PreHead(self.context_len, d_model, patch_dim)
 
         # print(f"is context len the right thing {context_len}")
 
@@ -462,38 +465,25 @@ class EnerdiT(nn.Module):
         b_s, in_d = x.shape  # for simple only b and d dim
 
         assert t.shape[0] == x.shape[0]
-        # in_d is patch_dim which is like c*w * h of each patch and here * 2 because of fused
 
-        # reshape for embedding and dyt
-        # B, seq_len, fused patch dim
+        # For simple - need to patchify; it comes in (b, d)
 
-        # x_for_dyt = torch.permute(x, (0, 2, 1)) # NO need for simple
-        x_for_dyt = x  # in Simple
-
-        x = self.DyT(x)  # here was x_for_dyt
-
-        # print("x shape after Dyt and reshape", x.shape)
-        # (b, context, dim)
-
-        # For simple - need to patchify
-
-        x = x.view((b_s, 1, 32, 32))  # channels 1 say grayscale
-        # [20, 256, 32] # Why 32? doesn't seem right patch size should be 4
-
+        C = 1  # grayscale
+        x = x.view(
+            (b_s, C, self.h, self.h)
+        )  # timm patch layer wants image in hxw format
         patch_embed = self.patch_embed(x)
-        # print(f"patch_embed now after timm in simple {patch_embed.shape}")
+
+        print(f"patch_embed now after timm in simple {patch_embed.shape}")
 
         space_embed = self.space_embed(
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
+
+        print(f"shape of space embedding {space_embed.shape}")
+
         time_embed = self.time_embed(t)
-        # print(f"shape of time embedding {time_embed.shape}")
-
-        # as of right now t is the same for the sequence so
-        # to concatenate time_embed I need to repeat it for the sequence
-
-        # How will this work if t is same value for one sequence
-        # but differs accross the batch?
+        print(f"shape of time embedding {time_embed.shape}")
 
         x = patch_embed + space_embed
 

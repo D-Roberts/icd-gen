@@ -16,16 +16,15 @@
 
                 - issue with the right supervision and context treatment; architecture works fine on simple denoise with MSE.
 
+                - there might be an issue with the fused context - model learns to cancel each other out - reconceive context input after double check weights and grads on all layers. DyT is telling me something I think.
+
                 - now: make the simple synthetic task work.
                     - I am not certain the current patchify from timm is doing what I want. Check.
                     - save dataset to disk. Need to simplify as much as possible
                     to debug the supervision signal.
-                    - first no context
-                    - there might be an issue with the fused context - model learns to cancel each other out - reconceive context input after double check weights and grads on all layers. DyT is telling me something I think.
+                   
+                    
 
-                    - change model now with task and datagen change to simple first (no context, no patches, image level, need new patchify and all layers changed and an unpatchify)
-
-                
            
 
     *0. Code for models on the new patch structure datagen (priority 2)

@@ -69,13 +69,13 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 torch.manual_seed(0)
 
 model = EnerdiT(
-    context_len=1,  # no context in simple; will have to change everything
     d_model=32,
     input_dim=1024,  # the way datagen is setup now - comes in one flattened, including in simple
     cf1_init_value=0.5,
     num_heads=1,
     depth=1,
     mlp_ratio=4,
+    context_len=None,  # no context in simple; will have to change everything
 )
 
 
@@ -153,8 +153,8 @@ class TimeLossV2(nn.Module):
         # so the net should be able to learn it.
         # it can learn mse(y,x) right now so why not this?
 
-        # print(f"time_loss {time_match.mean()}")
-        # print(f"time l ends*********************")
+        print(f"time_loss {time_match} and over mini batch {time_match}")
+        print(f"time l ends*********************")
 
         return torch.mean(time_match)
 
@@ -256,7 +256,7 @@ class SpaceLossV2(nn.Module):
         # print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
 
         lspace = weight_factor * ldsm
-        # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
+        print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
         return torch.mean(lspace)
 
 
@@ -336,7 +336,7 @@ class Trainer:
             noisy,  # query last token of sequence non-padded portion
             t,  # t is just 1 per batch instance
             qenergy,
-            add_U=True,  # if to add the energy regularizer to loss
+            add_U=False,  # if to add the energy regularizer to loss
             return_both=True,
         )
 
@@ -381,7 +381,7 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 5
+epochs = 1  # do a total of around 60; takes around 30min on mps
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
@@ -401,8 +401,8 @@ for epoch in range(epochs):
         t, z, clean, noisy = get_batch_samples(data)
         print(f"batch index is {batch_count}")
         # stop for debug ********************************************
-        # if batch_count == 5:
-        #     break
+        if batch_count == 2:
+            break
         batch_count += 1
         # print(f"t is {t} of shape {t.shape}") # shape B
         # print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
