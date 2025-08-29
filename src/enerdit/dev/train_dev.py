@@ -395,11 +395,14 @@ for epoch in range(epochs):
 
     for i, data in enumerate(train_loader, 0):
         t, z, target, xs = get_batch_samples(data)
-        print(f"batch is {batch_count}")
+        print(f"batch index is {batch_count}")
         batch_count += 1
+        print(f"t is {t}")
+        print(f"\ntarget is {target}")
+        print(f"\nxs is {xs}")
 
         # stop for debug
-        if batch_count == 3:
+        if batch_count == 1:
             break
 
         # print(f"returned z.shape {z.shape}") #(B, patc, seq)
