@@ -294,7 +294,7 @@ class EnerdiTBlock(nn.Module):
 
         self.attn = Attention(
             2 * d_model, num_heads, qkv_bias=True
-        )  # TODO@DR there are some kwargs here will have to check them out
+        )  # identity and not norms on internal qkv
 
         self.dyt2 = DyTanh((context_len, 2 * d_model))
 
@@ -349,9 +349,9 @@ class EnerdiT(nn.Module):
         self.space_embed = SpaceEmbedding(d_model, context_len)
         self.time_embed = TimeEmbedding(
             d_model,
-            frequency_embedding_size=256,
-            mint=0,
-            maxt=10000,
+            frequency_embedding_size=32,
+            mint=0.1,
+            maxt=10,
         )
 
         ######################################Before this - inputs embedding
@@ -368,7 +368,7 @@ class EnerdiT(nn.Module):
         self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = PreHead(context_len, 2 * d_model)
+        # self.prehead_linear = PreHead(context_len, 2 * d_model)
 
         # a kind of unembed; aim to use only on the non-zero part of
         # the noisy query and clean label
@@ -454,7 +454,7 @@ class EnerdiT(nn.Module):
             x = block(x, time_embed)
 
         # add a residual here
-        x = self.prehead_linear(x)  # the shape out of block is 2*model due to
+        # x = self.prehead_linear(x)  # the shape out of block is 2*model due to
         # timeembed concat in block on the embed dimension
 
         space_score = self.space_head(x)

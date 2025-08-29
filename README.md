@@ -1,6 +1,6 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot. Oh - I should have a net to do some of this for me! An AI junior! TODO@DR - at some point.]
+### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot.]
 
     *-1. Mke the Enerdit work: priority 1. 
         - WIP
@@ -10,8 +10,8 @@
             - 2. Dev new loss / dgen setup to enable learning.
             
                 - WIP [not there yet]
+                - need to simplify the problem the model is working on; current is too hard to start with I think.
 
-                
                 
            
 

@@ -295,6 +295,7 @@ def get_fused_sequences(X_clean, X_noisy):
 
 
 def normalize(inputs, target):
+    """to 0,1"""
     dim = target.shape[1]
     in_min, in_max = torch.min(inputs), torch.max(inputs)
     target_min, target_max = torch.min(target), torch.max(target)
@@ -315,10 +316,11 @@ def get_batch_samples(data):
     b, pdim, seq_len = inputs.shape
 
     # Sample time steps
-    tmin = torch.tensor(10 ** (-9))
+    # tmin = torch.tensor(10 ** (-9))
+    tmin = torch.tensor(0.01)
 
     # Change the noise tmax considering how small is d
-    tmax = torch.tensor(100)
+    tmax = torch.tensor(10)
 
     logtmin = torch.log(tmin)
     logtmax = torch.log(tmax)

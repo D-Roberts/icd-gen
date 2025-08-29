@@ -70,10 +70,10 @@ torch.manual_seed(0)
 
 model = EnerdiT(
     context_len=8,
-    d_model=128,
+    d_model=32,
     input_dim=128,  # the way datagen is setup now - comes in one flattened
     cf1_init_value=0.5,
-    num_heads=2,
+    num_heads=1,
     depth=1,
     mlp_ratio=4,
 )
@@ -81,12 +81,12 @@ model = EnerdiT(
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
-    lr=0.0001,
+    lr=0.001,
     betas=(
         0.9,
-        0.98,
+        0.999,
     ),
-    eps=1e-8,
+    # eps=1e-8,
     weight_decay=0.0,
 )
 
@@ -131,17 +131,38 @@ class TimeLossV2(nn.Module):
 
         weight_factor = (t / d) ** 2
 
-        print(
-            f"be sure the normedsq is taken on the right dim (-1) in timelossv2 {query.shape}"
-        )
+        print(f"\ntime l begins*********************")
+
+        print(f"time l weight_factor {weight_factor}")
         normedsq = torch.norm(query - clean, p=2, dim=-1) ** 2
+
+        print(f"time l normedsq {normedsq.mean()}")  # one large
         parans_term2 = d / (2 * t) - normedsq / (2 * (t**2))
+        print(f"d / (2 * t) {d / (2 * t)}")
+        print(f"(2 * (t**2)) {(2 * (t**2))}")
+        print(f"normedsq / (2 * (t**2)) {normedsq / (2 * (t**2))}")
+
+        print(f"parans_term2 {parans_term2.mean()}")
 
         parans_term = time_score - parans_term2
+
+        print(f"time_score {time_score.mean()}")
         time_match = weight_factor * (parans_term**2)
         # there is a pattern/signal in this suppervision on the time score
         # so the net should be able to learn it.
         # it can learn mse(y,x) right now so why not this?
+
+        print(f"time_loss {time_match.mean()}")
+
+        # time l begins*********************
+        # time l weight_factor 1.896801116174629e-08
+        # time l normedsq 9208.251953125
+        # parans_term2 -59256904.0
+        # time_score -0.0014224419137462974
+        # time_loss 332987168.0
+        # time l ends*********************
+
+        print(f"time l ends*********************")
 
         return torch.mean(time_match)
 
@@ -203,22 +224,53 @@ class SpaceLossV2(nn.Module):
         """
         print(f"what is shape - the clean in SpaceLoss {clean.shape}")
         print(f"what is shape - the query in SpaceLoss {query.shape}")
+        print(f"what is shape - the z in SpaceLoss {z.shape}")
+
         # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
         # so here x is (B, dim, seq_len) while y=clean target on last noisy query
         # is (B, dim)
 
-        bs, d = query.shape
+        print(f"what is t here {t}")
+        # now they match
+
+        # sanity checks / debugging
+        # result = torch.einsum('bd,b->bd', z, torch.sqrt(t))
+        # print(f"check diff bet q and clean and comparison to zsqrtt {torch.mean(query - clean)} vs {torch.mean(result)}")
+        # ok, same
+
+        b, d = query.shape
 
         # print(f"d is ....{d}") # patch size (8x8 for example = 64)
 
         weight_factor = t / d  # this is safe, d is never 0
 
-        # zero grads come due a lot to very small term1
-        subtract = space_score - (query - clean) / t
+        print(f"weight_factor in spl {weight_factor}")
 
-        print(f"check dim as expected to take sq norm in spacelossv2 {subtract.shape}")
+        # subtract gets very high and then ldsm very very high
+        # weight_factor in spl 1.942039951075003e-08
+        # check values of space score 0.02238388918340206
+        # check values of squery 0.5388038754463196
+        # check values of squery 0.5314796566963196
+        # check values of (query - clean) / t -5892.83837890625
+        # checkvalue of subtract in spacelossv2 5892.86083984375
+        # check shape of subtract in spacelossv2 torch.Size([5, 64])
+        # checkvalue of ldsm in spacelossv2 1196198068224.0
 
-        ldsm = (torch.norm(subtract, p=2, dim=1)) ** 2
+        # multiply along batch dim
+        term2 = torch.einsum("bd,b->bd", (query - clean), 1 / t)  # t not zero
+        subtract = space_score - term2
+        print(f"check values of space score {torch.mean(space_score)}")
+
+        print(f"check values of squery {torch.mean(clean)}")
+        print(f"check values of squery {torch.mean(query)}")
+        print(f"check values of (query - clean) / t {torch.mean(term2)}")
+
+        print(f"checkvalue of subtract in spacelossv2 {subtract.mean()}")
+        print(f"check shape of subtract in spacelossv2 {subtract.shape}")
+
+        ldsm = (torch.norm(subtract, p=2, dim=1)).pow(2)
+
+        print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
 
         lspace = weight_factor * ldsm
         # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
@@ -252,10 +304,10 @@ class SpaceTimeLoss(nn.Module):
 
         stl = spl + tl
 
-        lamu = 0.01
+        lamu = 0.001
         if add_U:
             stl += lamu * U.mean()  # minibatch average
-            print(f"U in spacetime loss {U}")
+            print(f"U in spacetime loss {U.mean()}")
 
         if return_both:
             return stl, spl, tl
@@ -329,7 +381,7 @@ class Trainer:
             z[:, :64, -1],  # noise corresponding to query non-padded portion
             ys[:, :64],  # clean label, non-padding portion
             xs[:, :64, -1],  # query last token of sequence non-padded portion
-            t[-1],
+            t,  # t is just 1 per batch instance
             qenergy,
             add_U=True,  # if to add the energy regularizer to loss
             return_both=True,
@@ -350,15 +402,17 @@ class Trainer:
         #         print(f"  {name}: {param.grad.norm().item():.4f}")
 
         # Apply gradient clipping by norm; just leave it in although not needed
-        max_norm = 1.0  # Define the maximum allowed norm
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        # max_norm = 1.0  # Define the maximum allowed norm
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
         # After clipping, inspect gradient norms
         # there is no need for clipping but I'll just leave it for now.
-        print("\nGradient norms after clipping:")
+        print("\nGradients and weights")
         for name, param in model.named_parameters():
             if param.grad is not None:
-                print(f"  {name}: {param.grad.norm().item():.4f}")
+                # print(f"  {name}: {param.grad.norm().item():.4f}")
+                print(f"  {name}: {param.grad}")
+                print(f"  {name}: {param}")
 
         optimizer.step()
 
@@ -387,7 +441,7 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 30
+epochs = 60
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
@@ -490,8 +544,8 @@ for epoch in range(epochs):
     # exp.log_metrics({"Dev test each epoch l1 mean loss": test_lossl1_mean}, step=epoch)
 
     # stop for debug
-    if batch_count == 3:
-        break
+    # if batch_count == 2:
+    #     break
 
 ###########################later
 # print(len(energies))
