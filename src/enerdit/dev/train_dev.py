@@ -344,6 +344,7 @@ class Trainer:
         # and not on losses so that I get a clearer idea of wtf is going on.
 
         loss = dev_loss(space_score, clean)
+        # loss = dev_loss(time_score, clean.mean())
         # it is learning with the target y on the space score or time score or sum.
 
         #######################################
