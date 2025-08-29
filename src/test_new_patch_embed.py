@@ -30,3 +30,11 @@ print(
     f"shape of x_patched {x_patched.shape}"
 )  # shape of x_patched torch.Size([1, 256, 32])
 # batch = 1, num patches is 256; embedding dim = d_model = 32
+
+# _---------
+
+test_broadc = torch.zeros(3, 2)
+a = torch.ones(1, 2)
+print(test_broadc)
+print(a)
+print(test_broadc + a)  # yes it does as expected

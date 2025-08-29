@@ -10,7 +10,6 @@
             - 2. Dev new loss / dgen setup to enable learning.
             
                 - WIP [not there yet]
-                - need to simplify the problem the model is working on; current is too hard to start with I think.
                 - Also these noise schedules depend a lot on input distrib and dim
                         reconsider t pattern to learn and what makes it in-context
 
@@ -19,7 +18,6 @@
                 - there might be an issue with the fused context - model learns to cancel each other out - reconceive context input after double check weights and grads on all layers. DyT is telling me something I think.
 
                 - now: make the simple synthetic task work.
-                    - I am not certain the current patchify from timm is doing what I want. Check.
                     - save dataset to disk. Need to simplify as much as possible
                     to debug the supervision signal.
                    

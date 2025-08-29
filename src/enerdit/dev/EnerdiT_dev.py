@@ -32,6 +32,7 @@ class DyTanh(nn.Module):
         x = torch.tanh(self.alpha * x)
         # print("In tanh x shape", x.shape)
         # print(f"trouble weight in tanh {self.shape_in}")
+        # elementwise
         x = x * self.weight + self.bias
         return x
 
@@ -147,20 +148,18 @@ class TimeEmbedding(nn.Module):
 """
 EnerdiT archi and buildinblocks.
 
-This will not be a state of the art scale bc of low on time.
-
-I will then have to find ways to train it /make it work faster and with 
-less compute / one GPU bc of low on time to deadline.
+Running low on time.
 
 """
 
 
 class EnerdiTFinal(nn.Module):
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         super(EnerdiTFinal, self).__init__()
-        pass
 
-    def forward(self, sh, th, noisy, cf1):
+    def forward(self, sh, th, noisy):
         """
 
         U = 0.5( <s, y> - correction) TODO@DR reconsider math for this
@@ -168,7 +167,8 @@ class EnerdiTFinal(nn.Module):
 
         correction = cf1 * time score
 
-        cf1 learned
+        cf1 hyperpar but consider learning it later
+        set it to cf1 = 0.1
 
         return : energy for query token
         """
@@ -216,29 +216,36 @@ class EnerdiTFinal(nn.Module):
         # so if this works empirically need to rework theory math
         # for this approximation
 
+        cf1 = 0.1
         correction = cf1 * th_pred
         # TODO@DR: will have to see about signs; query is the noisy
-        energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1)) - correction)
+        energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1))) - correction
+
+        # correction is not being learned since U is not fed
+        # though the learning loop directly
+        # so I might make it as part of some layer akin to a modulation TODO@DR but not until I see learning
+        # leave it as a hyper par right now
 
         return energy
 
 
 class PreHead(nn.Module):
     """
-    this is before the two heads
+    this is before the two heads; not used right now.
     """
 
-    def __init__(self, context_len, d_model, patch_dim):
+    def __init__(self, context_len, d_model):
         super().__init__()
 
-        self.dyt_final = DyTanh((context_len, d_model))
+        # context + 1 because of the concatenated time embed
+        self.dyt_final = DyTanh((context_len + 1, d_model))
         self.silu = nn.SiLU()
 
         # TODO@DR: not sure yet about the modulation.
         # TODO@DR also the conditioning on context - might try different
         # ways like a cross-attn layer added in at differnt layers
 
-        self.prehead_layer = nn.Linear(d_model, patch_dim, bias=False)
+        self.prehead_layer = nn.Linear(d_model, d_model, bias=False)
 
     def forward(self, x):
         # print("x shape ans it comes into dyt_final", x.shape)
@@ -258,14 +265,17 @@ class TimeHead(nn.Module):
     space head
     """
 
-    def __init__(self, d_model, input_dim, context_len=None):
+    def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_time = DyTanh((input_dim))
+        self.dyt_time = DyTanh((context_len * d_model))
         self.silu = nn.SiLU()
-        self.time_head = nn.Linear(input_dim, input_dim, bias=True)
+        self.time_head = nn.Linear(
+            context_len * d_model, input_dim, bias=True
+        )  # project to input_dim
 
     def forward(self, x):
+        # print("shape of x as it comes in time head ", x.shape)
         x = self.dyt_time(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
         x = self.silu(x)
@@ -287,12 +297,16 @@ class SpaceHead(nn.Module):
     for simple img level no context task x here is already (B, d)
     """
 
-    def __init__(self, d_model, input_dim, context_len=None):
+    def __init__(self, d_model, input_dim, context_len):
         super().__init__()
 
-        self.dyt_space = DyTanh(shape_in=(input_dim))
+        self.dyt_space = DyTanh(
+            shape_in=(context_len * d_model)
+        )  # bc it was unpatchified
         self.silu = nn.SiLU()
-        self.space_head = nn.Linear(input_dim, input_dim, bias=True)
+        self.space_head = nn.Linear(
+            context_len * d_model, input_dim, bias=True
+        )  # project to d dim
 
     def forward(self, x):
         # print(f"shape in head {x.shape}")  # [3, 8, 4] is (B, seq_len, d_model)
@@ -313,13 +327,14 @@ class EnerdiTBlock(nn.Module):
     def __init__(self, d_model, context_len, num_heads=1, mlp_ratio=4.0):  # as in DiT
         super().__init__()
 
-        self.dyt1 = DyTanh((context_len, d_model))
+        # context_len+1 bc I conditioned with the time embed
+        self.dyt1 = DyTanh((context_len + 1, d_model))
 
         self.attn = Attention(
             d_model, num_heads, qkv_bias=True
         )  # identity and not norms on internal qkv
 
-        self.dyt2 = DyTanh((context_len, d_model))
+        self.dyt2 = DyTanh((context_len + 1, d_model))
 
         mlp_hidden_dim = int(0.4 * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
@@ -330,8 +345,6 @@ class EnerdiTBlock(nn.Module):
             act_layer=approx_gelu,
             drop=0,
         )
-        # TODO@DR: will have to checkout the timm implementations as I typically
-        # work with HF
 
     def forward(self, x, time_embed):
         # print(f"shape of time emebde w simple {time_embed.shape}")
@@ -349,17 +362,18 @@ class EnerdiTBlock(nn.Module):
 # Taking inspiration from https://github.com/facebookresearch/DiT/blob/main/models.py
 class EnerdiT(nn.Module):
     """
-    assume at this point that the patches are cut up and fused already.
+    assume at this point that the patches are cut up and fused already if for in-context.
+    in simple - timm patching used.
     """
 
     def __init__(
         self,
         d_model,
         input_dim,  # the way datagen is setup now - comes in one flattened
-        cf1_init_value,
-        num_heads,
-        depth,
-        mlp_ratio,
+        cf1_init_value=0.1,
+        num_heads=1,
+        depth=1,
+        mlp_ratio=4,
         patch_dim=2,
         context_len=None,
     ):
@@ -402,10 +416,10 @@ class EnerdiT(nn.Module):
         )
 
         # # correction factor space time scores
-        self.corf = nn.Parameter(torch.ones(1) * cf1_init_value)
+
         self.final_enerdit_layer = EnerdiTFinal()
 
-        self.prehead_linear = PreHead(self.context_len, d_model, patch_dim)
+        # self.prehead_linear = PreHead(self.context_len, d_model,)
 
         # print(f"is context len the right thing {context_len}")
 
@@ -418,36 +432,36 @@ class EnerdiT(nn.Module):
         # so I think input dim should be patch dim here
         # since I aimed for patch dim of 2 should have patch size of 4
 
-        self.time_head = TimeHead(d_model, input_dim, context_len)
-        self.space_head = SpaceHead(d_model, input_dim, context_len)
+        self.time_head = TimeHead(d_model, input_dim, self.context_len)
+        self.space_head = SpaceHead(d_model, input_dim, self.context_len)
 
         # self.pre_init() #TODO@DR see later about custom init - right now is hurting
 
-    def pre_init(self):
-        """will init weights here however way I want and whatever else I
-        want to init
+    # def pre_init(self):
+    #     """will init weights here however way I want and whatever else I
+    #     want to init
 
-        for now the linears and the final but not final init
-        """
+    #     for now the linears and the final but not final init
+    #     """
 
-        # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
-        # with this
-        def lin_init(module):
-            if isinstance(module, nn.Linear):
-                # TODO@DR: reconsider later: not learning well with this below at this time in dev
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
+    #     # TODO@DR: this is in spirit of DiT but I am not convinced I'll stay
+    #     # with this
+    #     def lin_init(module):
+    #         if isinstance(module, nn.Linear):
+    #             # TODO@DR: reconsider later: not learning well with this below at this time in dev
+    #             nn.init.xavier_uniform_(module.weight)
+    #             if module.bias is not None:
+    #                 nn.init.constant_(module.bias, 0)
 
-        self.apply(lin_init)
+    #     self.apply(lin_init)
 
-        # zero out out layer on the heads TODO@DR: think this again
+    #     # zero out out layer on the heads TODO@DR: think this again
 
-        nn.init.constant_(self.space_head.space_head.bias, 0)
-        nn.init.constant_(self.time_head.time_head.bias, 0)
+    #     nn.init.constant_(self.space_head.space_head.bias, 0)
+    #     nn.init.constant_(self.time_head.time_head.bias, 0)
 
-        nn.init.constant_(self.space_head.space_head.weight, 0)
-        nn.init.constant_(self.time_head.time_head.weight, 0)
+    #     nn.init.constant_(self.space_head.space_head.weight, 0)
+    #     nn.init.constant_(self.time_head.time_head.weight, 0)
 
     def unpatchify(self, x):
         """
@@ -464,6 +478,8 @@ class EnerdiT(nn.Module):
         # b_s, in_d, context_len = x.shape
         b_s, in_d = x.shape  # for simple only b and d dim
 
+        x_for_U = x
+
         assert t.shape[0] == x.shape[0]
 
         # For simple - need to patchify; it comes in (b, d)
@@ -474,20 +490,19 @@ class EnerdiT(nn.Module):
         )  # timm patch layer wants image in hxw format
         patch_embed = self.patch_embed(x)
 
-        print(f"patch_embed now after timm in simple {patch_embed.shape}")
+        # print(f"patch_embed now after timm in simple {patch_embed.shape}")
 
         space_embed = self.space_embed(
             patch_embed
         )  # [1, seq_len, d_model] will add same order each instance in batch
 
-        print(f"shape of space embedding {space_embed.shape}")
+        # print(f"shape of space embedding {space_embed.shape}")
 
         time_embed = self.time_embed(t)
-        print(f"shape of time embedding {time_embed.shape}")
+        # print(f"shape of time embedding {time_embed.shape}")
 
         x = patch_embed + space_embed
-
-        # for Simple need to squeeze out context
+        # for Simple need to squeeze out the 1 dim
         x = x.squeeze()
 
         # Tile identical t embeddings for each context token.
@@ -511,21 +526,25 @@ class EnerdiT(nn.Module):
         # I need to detach timeembed now before heads
         # But I need the prehead layer to reshape first
 
-        x = self.prehead_linear(x)
+        # print(f"check out x after block {x.shape}") #[5, 257, 32]) (b, context_len+1, d_model)
+        # x = self.prehead_linear(x) #I'll take this out
+        # print(f"check out x after prehead layer {x.shape}")#[5, 257, 32])
 
-        x = x[:, :-1, :]
+        x = x[:, :-1, :]  # this is where I detach the time embed
+        # print(f"check out x after time embed detached {x.shape}") #[5, 256, 32]) ok
 
         # And unpatchify here before heads
         x = self.unpatchify(x)
-        # print(f"shape of x before heads {x.shape}")
+        # print(f"shape of x before heads {x.shape}") # (b, 256*32)
 
         space_score = self.space_head(x)
         time_score = self.time_head(x)
 
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens
-        energy = self.final_enerdit_layer(space_score, time_score, x_for_dyt, self.corf)
-        # print(f"what is {self.corf}")
+
+        # Energy is not fed unless used as regularizer
+        energy = self.final_enerdit_layer(space_score, time_score, x_for_U)
 
         return energy, space_score, time_score
 
