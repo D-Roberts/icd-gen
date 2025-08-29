@@ -11,6 +11,7 @@
             
                 - WIP [not there yet]
                 - need to simplify the problem the model is working on; current is too hard to start with I think.
+                - issue with the right supervision and context treatment; architecture works fine on simple denoise with MSE.
 
                 
            
@@ -21,9 +22,9 @@
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways
 
-        * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? 
+        * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? [no time for this now]
 
-        * also partition of indeces itneresting. Maybe leverage it more. Make it random.
+        * also partition of indeces itneresting. Maybe leverage it more. Make it random. [later]
 
         * MAE works better than MSE as theory suggests
 
