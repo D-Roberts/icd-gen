@@ -222,7 +222,7 @@ class EnerdiTFinal(nn.Module):
         energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1))) - correction
 
         # correction is not being learned since U is not fed
-        # though the learning loop directly
+        # through the learning loop directly
         # so I might make it as part of some layer akin to a modulation TODO@DR but not until I see learning
         # leave it as a hyper par right now
 

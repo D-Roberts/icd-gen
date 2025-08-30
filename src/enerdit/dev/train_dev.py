@@ -279,7 +279,6 @@ class SpaceTimeLoss(nn.Module):
         t,
         U,
         lam_space,
-        add_U=False,
         return_both=True,
     ):
         # print(f"z shape in loss {z.shape}") #[B, patch_dim, seq_len]
@@ -288,11 +287,6 @@ class SpaceTimeLoss(nn.Module):
         # print(f"t now in spacetime loss after I changed the schedule {t}")
 
         stl = lam_space * spl + tl
-
-        lamu = 0.001  # add this hyperpar to list
-        if add_U:
-            stl += lamu * U.mean()  # minibatch average
-            # print(f"U in spacetime loss {U.mean()}")
 
         if return_both:
             return stl, spl, tl
@@ -339,7 +333,6 @@ class Trainer:
             t,  # t is just 1 per batch instance
             qenergy,
             lam_space=0.9,  # make this hyper in yaml
-            add_U=False,  # if to add the energy regularizer to loss
             return_both=True,
         )
 
@@ -450,15 +443,9 @@ for epoch in range(epochs):
         print(f"time loss is {loss_t}\n")
 
         epoch_loss += loss
-        #     batch_count += 1
-        #     energy_epoch += energy.sum()
+        energy_epoch += energy.sum()
 
         #     energies.extend(-energy)
-
-        #     # TODO@DR should not have values outside 0,1 for p
-        #     # exp.log_metrics(
-        #     #     {"one p=exp(-en) in train batch": np.exp(-energy[0])}, step=batch_count
-        #     # )
 
         exp.log_metrics({"batch loss": loss}, step=batch_count)
         exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
@@ -472,7 +459,7 @@ for epoch in range(epochs):
     #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
-    # exp.log_metrics(
-    #     {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
-    #     step=epoch,
-    # )
+    exp.log_metrics(
+        {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
+        step=epoch,
+    )
