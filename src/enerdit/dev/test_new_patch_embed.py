@@ -35,6 +35,41 @@ print(
 
 test_broadc = torch.zeros(3, 2)
 a = torch.ones(1, 2)
-print(test_broadc)
-print(a)
-print(test_broadc + a)  # yes it does as expected
+# print(test_broadc)
+# print(a)
+# print(test_broadc + a)  # yes it does as expected
+
+
+# --------------------
+def sample_mixture(d=2, n=5, seeds=None):
+    """the simplest sampling syntethic for enerdit learning debug.
+    d is dimension of patch flattened say 32x32 images
+
+    100,000 samples
+
+    put no context prompt on
+    From mixture N(0, 16Id) so var = 16, stdev = 4 and stdev=1
+    """
+    # torch.manual_seed(seeds)
+    sig1, sig2 = 4, 1
+
+    X = torch.zeros((n, d))
+    print(
+        f"X shape {X.shape} , X[i] shape {X[1, :].shape} and randn(1,d) shape {(torch.randn(1, d)).shape}"
+    )
+    for i in range(n):
+        tensor_uniform = torch.rand(1)
+        print(tensor_uniform)
+
+        if tensor_uniform < 0.5:
+            print(f"sig1?")
+            X[[i], :] += sig1 * torch.randn(1, d)
+        else:
+            X[[i], :] += sig2 * torch.randn(1, d)
+            print(f"sig2?")
+    return X
+
+
+res = sample_mixture()
+
+print(res)

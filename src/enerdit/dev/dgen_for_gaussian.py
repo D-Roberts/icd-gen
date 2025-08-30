@@ -165,6 +165,32 @@ class GroupSampler(DataSampler):
 
         return X, None, None, self.S  # leave just so that I don't change all interfaces
 
+    def sample_mixture(self, d=1024, n=100000, seeds=None):
+        """the simplest sampling syntethic for enerdit learning debug.
+        d is dimension of patch flattened say 32x32 images
+
+        100,000 samples
+
+        put no context prompt on
+        From mixture N(0, 16Id) so var = 16, stdev = 4 and stdev=1
+        """
+        # torch.manual_seed(seeds)
+        sig1, sig2 = 4, 1
+        print(f"am I sampling mixture?")
+
+        X = torch.zeros((n, d))
+        for i in range(n):
+            tensor_uniform = torch.rand(1)
+            # print(tensor_uniform)
+
+            if tensor_uniform < 0.5:
+                # print(f"sig1?")
+                X[[i], :] += sig1 * torch.randn(1, d)
+            else:
+                X[[i], :] += sig2 * torch.randn(1, d)
+                # print(f"sig2?")
+        return X, None, None, self.S  # leave just so that I don't change all interfaces
+
     def get_X_and_label_unfused(self, X_clean=None):
         """only the x of clean and the label which is the last of x"""
 
@@ -184,7 +210,8 @@ class GroupSampler(DataSampler):
 # Ad hoc testing
 dggen = GroupSampler()
 # The simplest Normal
-dataset, y, w, partition = dggen.sample_simple()
+# dataset, y, w, partition = dggen.sample_simple()
+dataset, y, w, partition = dggen.sample_mixture()
 print(f"shape of simple {dataset.shape}")
 
 # dataset, y, w, partition = dggen.sample_xs()
@@ -283,7 +310,7 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 # print(f"label {Label}")
 
 # print(y_train.shape)
-batch_size = 256  # aim for 512 but debug 5
+batch_size = 512  # aim for 512 but debug 5
 train_size = x_train.shape[0]
 
 train_dataset = DatasetWrapper(x_train, y_train)

@@ -11,10 +11,8 @@
             - 2. Dev new loss / dgen / model setup to enable learning.
             
                 - WIP 
-                - Also these noise schedules depend a lot on input distrib and dim
-                        reconsider t pattern to learn and what makes it in-context
-
-                - both heads learn on simplest task now with larger capacity and the new archi; slow now - need to get onto the gpu, mps not cutting it anymore.
+                - step up the difficulty - make datagen a mixture with a 50-50
+                chance between two stdev 1 and 4.
                 
                    
            
