@@ -17,7 +17,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
-from src.dam_energies import *
+from dam_energies import *
+from gamma_two_models import TransformerModelV2
 from groups_datagen import (
     x_train,
     y_train,
@@ -44,11 +45,7 @@ exp = comet_ml.Experiment(
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
-from src.baselines_linear import (
-    loss_if_predict_average,
-    loss_if_predict_mostrecent,
-    theory_linear_expected_error,  # TODO@DR: put this back
-)
+
 from data_util import (
     report_dataset_loss,
     report_dataset_psnr,
@@ -165,7 +162,7 @@ def train(model, args):
         betas=(
             0.9,
             0.98,
-        ),  # DR: don't focus on all tunables here like the betas and the eps
+        ),
         eps=1e-8,
         weight_decay=args.training["wd"],
     )
@@ -188,7 +185,6 @@ def train(model, args):
     ################################################################################
 
     # specify training and testing datasets
-    # Right now only for structured POC
 
     # just for save model
     # print(
@@ -408,7 +404,7 @@ def main(args):
     model = TransformerModelV2(
         context_length=args.training["context_len"],
         dim_input=args.training["dim_n"],
-        add_frozen_kernel=True,
+        add_frozen_kernel=args.training["add_frozen_kernel"],
         backbone="ViT",
     )
     print(model)

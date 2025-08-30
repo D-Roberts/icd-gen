@@ -218,15 +218,26 @@ class EnerdiTFinal(nn.Module):
 
         cf1 = 0.1
         correction = cf1 * th_pred
+
+        # print(f"in energy sp_pred {sp_pred}")
+        # print(f"in energy query {query}")
+        # print(f"in energy th_pred {th_pred}")
+
         # TODO@DR: will have to see about signs; query is the noisy
-        energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1))) - correction
+        # energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1))) - correction
+        # print(f"\nin energy energy {energy}")
+
+        energy_noc = 0.5 * (torch.sum(sp_pred * query, dim=(-1)))
+        # print(f"\nin energy_noc {energy_noc}")
 
         # correction is not being learned since U is not fed
         # through the learning loop directly
         # so I might make it as part of some layer akin to a modulation TODO@DR but not until I see learning
         # leave it as a hyper par right now
 
-        return energy
+        # return energy
+        # Let's work with energy first
+        return energy_noc
 
 
 class PreHead(nn.Module):
@@ -281,7 +292,7 @@ class TimeHead(nn.Module):
         x = self.silu(x)
         x = self.time_head(x)
 
-        print("shape of x as it comes out of time head ", x.shape)
+        # print("shape of x as it comes out of time head ", x.shape)
         return x
 
 

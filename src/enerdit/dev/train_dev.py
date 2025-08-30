@@ -17,7 +17,12 @@ from torch.utils.data import Dataset, DataLoader
 from transformers.optimization import get_cosine_schedule_with_warmup
 
 # from datagen_onestr_dev import train_loader, test_loader
-from dgen_for_gaussian import get_batch_samples, train_loader, test_loader
+from dgen_for_gaussian import (
+    get_batch_samples,
+    train_loader,
+    test_loader,
+    get_batch_samples_test,
+)
 
 from EnerdiT_dev import *
 
@@ -69,7 +74,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 torch.manual_seed(0)
 
 model = EnerdiT(
-    d_model=64,  # 512
+    d_model=256,  # 512
     input_dim=1024,  # the way datagen is setup now - comes in one flattened, including in simple
     cf1_init_value=0.5,
     num_heads=1,
@@ -243,7 +248,7 @@ class SpaceLossV2(nn.Module):
         # multiply along batch dim
         term2 = torch.einsum("bd,b->bd", (query - clean), 1 / t)  # t not zero
         subtract = space_score - term2
-        # print(f"check values of space score {torch.mean(space_score)}")
+        # print(f"check mean values of space score in sp loss {torch.mean(space_score)}")
 
         # print(f"check values of squery {torch.mean(clean)}")
         # print(f"check values of squery {torch.mean(query)}")
@@ -332,16 +337,12 @@ class Trainer:
             noisy,  # query last token of sequence non-padded portion
             t,  # t is just 1 per batch instance
             qenergy,
-            lam_space=0.9,  # make this hyper in yaml
+            lam_space=1,  # make this hyper in yaml
             return_both=True,
         )
 
         # This is the MSE for dev purposes when working on archi or datagen
-        # and not on losses so that I get a clearer idea of wtf is going on.
-
         # loss = dev_loss(space_score, clean)
-        # loss = dev_loss(time_score, clean.mean())
-        # it is learning with the target y on the space score or time score or sum.
 
         #######################################
 
@@ -377,20 +378,20 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 3  # do a total of around 60; takes around 4hrs
+epochs = 2  # do a total of around 60; takes around 4hrs
 # on mps with Enerdit with d_mod = 512
 train_size = len(train_loader)
 
-# scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
+scheduler = get_cosine_schedule_with_warmup(optimizer, 0, epochs * train_size)
 
 print(model)
+model.train()
 model.to(device)
 print(f"train num batches {train_size}")
 
 batch_count = 0
 energies = []
 for epoch in range(epochs):
-    print(f"***********Epoch is {epoch}")
     epoch_loss = 0.0
     energy_epoch = 0.0
 
@@ -441,15 +442,24 @@ for epoch in range(epochs):
         print(f"total loss is {loss}\n")
         print(f"space loss is {loss_sp}\n")
         print(f"time loss is {loss_t}\n")
+        print(f"noc U batch mean {energy.mean()}\n")
 
         epoch_loss += loss
-        energy_epoch += energy.sum()
 
         #     energies.extend(-energy)
 
         exp.log_metrics({"batch loss": loss}, step=batch_count)
         exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
         exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+
+        exp.log_metrics(
+            {"noc U first in batch": energy[0]},
+            step=batch_count,
+        )
+        exp.log_metrics(
+            {"exp(-noc U) first in batch": math.exp(-energy[0])},
+            step=batch_count,
+        )
 
     #     # CHeck that the weights are updating (look at several)
     #     for name, param in model.named_parameters():
@@ -459,7 +469,40 @@ for epoch in range(epochs):
     #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)
-    exp.log_metrics(
-        {"avg epoch energy aka nll": energy_epoch / batch_count * train_size},
-        step=epoch,
-    )
+    scheduler.step()  # step the learning rate; if not cosine then no scheduler
+    print("\tlast LR:", scheduler.get_last_lr())
+
+    print("end epoch:", epoch, "====================")
+
+
+def eval_test(model, criterion, dataloader, device):
+    # print(f"loss func is {loss_func_dev}")
+    mse_total = 0
+    model.to(device)
+    model.eval()
+
+    with torch.no_grad():
+        for i, data in enumerate(dataloader, 0):
+            t, z, clean, noisy = get_batch_samples_test(data)
+            #     print(f"t is {t} of shape {t.shape}") # shape B
+            #     print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
+            #     print(f"\n noisy is {noisy} of shape {noisy.shape}")
+            #     print(f"\nz is {z} of shape {z.shape}")
+            #     sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
+            #     print(
+            #     f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
+            # )
+
+            qenergy, space_score, time_score = model(noisy.to(device), t.to(device))
+            loss = criterion(space_score, clean.to(device))  # l2.MSE per batch
+
+            mse_total += loss
+
+    mse = mse_total / len(dataloader)
+    # psnr in db
+    psnr = -10 * math.log10(mse)
+    print(f"for noise level t {t} psnr from mse over test set {psnr}")
+    return psnr
+
+
+eval_test(model, loss_func_dev, test_loader, device)

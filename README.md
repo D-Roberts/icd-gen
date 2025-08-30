@@ -1,8 +1,8 @@
 ### WIP - codebase under development.
 
-### TODO@DR running list [DR is me and I give myself tasks bc I wear two hats and I work alone a lot (well, not counting the nets).]
+### TODO@DR running list.
 
-    *-1. Mke the Enerdit work: priority 1. 
+    *-1.  Enerdit dev: . 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
 
@@ -12,20 +12,32 @@
             
                 - WIP 
                 - step up the difficulty - make datagen a mixture with a 50-50
-                chance between two stdev 1 and 4.
+                chance between two stdev 1 and 4. Model still learns.
+                - next put the patches in. An adhoc put the patches together first 
+                to mimic image to image as in simple and mixture. Learns / Losses 
+                fo down on this too. 
+
+                - save dataset.
+
+                - now look into what is learning. Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy).
+                - add test set along training. Now that it's learning, need to dev
+                the quality of learning.
+                - move back to V1 losses I think.
                 
-                   
-           
 
-    *0. Lens 1. Setting2. seCode for models on the new patch structure datagen (priority 2)
+    *0. Lens 1. Setting2. Code for models on the new patch structure datagen
 
-        *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
+        Comet for patch-group-gamma-denoise-in-context:
+        https://www.comet.com/ai-daor/gamma-patch/view/new/panels
+
+        * Rethink how the groups and group indeces are generated.
+
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
-        since need to project it from embed dim anyways
+        since need to project it from embed dim anyways. For pred and loss- slice out zeros.
 
-        * reconsider loss. Now MSE def not appropriate for gamma noise. MAE option now. Should I make a new loss? Distribution level comparison is best. How would I get an energy-based loss here? [no time for this now]
+        * compare MAE with one other loss (no point in MSE). 
 
-        * also partition of indeces itneresting. Maybe leverage it more. Make it random. [later]
+       * * also partition of indeces itneresting. Maybe leverage it more. Make it random. [later]*
 
         * MAE works better than MSE as theory suggests
 
@@ -45,8 +57,10 @@
     #4. Lens 1. Setting 1. There might be a bug in the 2-attn heads repo.
 
     *6. Lens 1. Setting 2. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
+
+    Overall:
     *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
-    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians(torch jacrev) if I need them.
+    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians(torch jacrev) if I need them. Back to simple for test dev.
    
     
 
@@ -68,9 +82,17 @@ conda activate icd-gen
 * Modify args in config/args.yaml 
 
 * Run train from root of icd-gen dir
+
+For linear datagen
 ```
 python src/train_denoiser.py --config config/args.yaml
 ```
+For gamma noise and patch groups - spatial
+
+```
+python src/train_gamma_patch.py --config config/args.yaml
+```
+
 Clean up dirs with 
 ```
 ./clean.sh

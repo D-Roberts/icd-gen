@@ -35,7 +35,7 @@ exp = comet_ml.Experiment(
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
-from baselines import (
+from src.baselines_linear import (
     # loss_if_predict_zero,
     loss_if_predict_average,
     loss_if_predict_mostrecent,

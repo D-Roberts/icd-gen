@@ -253,6 +253,8 @@ fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
 # print(f"feature w shape {w.shape}") #100 dim vector from d
 # print(f"partition of indices S {partition}") # there are 10 groups with 2 elem each
 
+# TODO@DR: What does this mean? Rethink how the groups and group indeces work.
+
 
 def plot_the_batch_partitions(i, D, partition):
     plt.figure(figsize=(4, 4))

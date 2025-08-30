@@ -54,10 +54,11 @@ grouped_patches:
 training:
 
     Enerdit:
-        lamu: 0.001
-    batch_level_partitions: True
+        lam_space: 0.001
+    batch_level_partitions: False # when true, a distinct structure is generated for each batch 
     num_train_batches: 
     num_test_batches:
+    add_frozen_kernel: False # To transformer V2 model
     
     batch_size: 64
     learning_rate: 0.01
@@ -76,7 +77,7 @@ training:
     nn_model: TransformerModelV2 #one attn layer with softmax
     
     
-    seed_torch: #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
+    seed_torch: 0 #(default: None) None or an int (sets net weights; possibly batch order/shuffle)
     train_plus_test_size: 1000 # settings for dataset construction + training (from their settings file)
     full_loss_sample_interval: 4
     flag_save_dataset: False

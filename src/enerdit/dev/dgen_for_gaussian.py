@@ -45,10 +45,10 @@ class GroupSampler(DataSampler):
 
     def __init__(
         self,
-        N=20,
-        D=8,
-        d=None,
-        L=None,
+        N=100000,
+        D=4,
+        d=256,  # 16x16
+        L=2,
         S=None,
         C=None,
         sigma=None,
@@ -95,61 +95,61 @@ class GroupSampler(DataSampler):
 
         return torch.randperm(D).view(L, -1)
 
-    # def sample_xs(self, seeds=None):
-    #     """w is the features we construct signal to noise for structure
+    def sample_patches(self, seeds=None):
+        """w is the features we construct signal to noise for structure
 
-    #     y is  from the classification task in jelassi paper.
+        y is  from the classification task in jelassi paper.
 
-    #     Control gamma noise param as a function of y.
-    #     Instead could depend on the group index.
+        no noise here, this is for enerdit with gaussian.
 
-    #     On enerdit - put gaussian noise in instead TODO@DR: reason how
-    #     this needs to change.
+        """
 
-    #     Not sure yet how to best make in context, various options.
-    #     Batch context with each batch a str seems apt.
-    #     """
+        print(f"am I sampling patches?")
 
-    #     # make a feature here; the signal in the dataset
-    #     w = torch.randn(self.d)
-    #     w /= w.square().sum().sqrt()
+        # make a feature here; the signal in the dataset
+        w = torch.randn(self.d)
+        w /= w.square().sum().sqrt()
 
-    #     y = torch.randn(
-    #         self.N
-    #     ).sign()  # this is what was the classification label in jelassi, 1 or -1, per instance
-    #     # leave it
-    #     q = math.log(self.d) / self.D
-    #     sigma = 1 / math.sqrt(self.d)
-    #     noise = (
-    #         torch.randn(self.N, self.D, self.d) * sigma
-    #     )  # gaussian noise with this sigma
-    #     X = torch.zeros(self.N, self.D, self.d)
+        y = torch.randn(
+            self.N
+        ).sign()  # this is what was the classification label in jelassi, 1 or -1, per instance
+        # leave it
+        # q = math.log(self.d) / self.D
+        sigma = 1 / math.sqrt(self.d)
+        noise = (
+            torch.randn(self.N, self.D, self.d) * sigma
+        )  # gaussian noise with this sigma
+        X = torch.zeros(self.N, self.D, self.d)
 
-    #     for i in range(self.N):  # every example
-    #         l = torch.randint(self.L, (1,))[0]  # a group index
-    #         # print("l ", l)
-    #         # print("partition", self.S)  #
-    #         R = self.S[l]
-    #         for j in range(self.D):
-    #             if (
-    #                 j in R
-    #             ):  # this here creates artif groups by snr; X[i][j] is meant to be the pixel
-    #                 X[i][j] = y[i] * w + noise[i][j]
-    #             else:  # TODO@DR: rethink this SNR
-    #                 prob = 2 * (torch.rand(1) - 0.5)
-    #                 if prob > 0 and prob < q / 2:
-    #                     delta = 1
-    #                 elif prob < 0 and prob > -q / 2:
-    #                     delta = -1
-    #                 else:
-    #                     delta = 0
-    #                 X[i][j] = delta * w + noise[i][j]
+        print(f"self q is {self.q}")
 
-    #     # TODO@DR: I might need to rethink how the patches in one sample are
-    #     # and how in context is defined
+        num_times = 0
 
-    #     # last dim can be viewed as a patch flattened
-    #     return X, y, w, self.S
+        for i in range(self.N):  # every example
+            l = torch.randint(self.L, (1,))[0]  # a group index
+            # print("l ", l)
+            # print("partition", self.S)  #
+            R = self.S[l]
+            for j in range(self.D):
+                if (
+                    j in R
+                ):  # this here creates artif groups by snr; X[i][j] is meant to be the pixel
+                    X[i][j] = y[i] * w + noise[i][j]
+                else:  # TODO@DR: rethink this SNR
+                    prob = 2 * (torch.rand(1) - 0.5)
+                    if prob > 0 and prob < self.q / 2:
+                        delta = 1
+                    elif prob < 0 and prob > -self.q / 2:
+                        delta = -1
+                    else:
+                        delta = 0
+                        num_times += 1
+                    X[i][j] = delta * w + noise[i][j]
+
+        print(f"how many times do I get noise only {num_times}")
+        # last dim of X can be viewed as the cut up image put back together
+        # and flattened
+        return X.view(X.shape[0], -1), y, w, self.S
 
     def sample_simple(self, d=1024, n=100000, seeds=None):
         """the simplest sampling syntethic for enerdit learning debug.
@@ -211,10 +211,12 @@ class GroupSampler(DataSampler):
 dggen = GroupSampler()
 # The simplest Normal
 # dataset, y, w, partition = dggen.sample_simple()
-dataset, y, w, partition = dggen.sample_mixture()
-print(f"shape of simple {dataset.shape}")
 
-# dataset, y, w, partition = dggen.sample_xs()
+# two gaussian mixture
+dataset, y, w, partition = dggen.sample_mixture()
+# print(f"shape of simple {dataset.shape}")
+
+# dataset, y, w, partition = dggen.sample_patches()
 # print(dataset.shape, y.shape)
 
 # X, Label = dggen.get_X_and_label_unfused(dataset)
@@ -271,6 +273,7 @@ def grouped_data_train_test_split_util(
 
     ntest = int(test_ratio * ntotal)
     ntrain = ntotal - ntest
+    print(f"ntotal {ntotal}, ntest {ntest}, ntrain {ntrain}")
 
     test_indices = rng.choice(ntotal, ntest, replace=False)
     train_indices_to_shuffle = [i for i in range(ntotal) if i not in test_indices]
@@ -279,11 +282,9 @@ def grouped_data_train_test_split_util(
     # grab train data
     # x_train = x_total1[train_indices, :, :]
     x_train = x_total1[train_indices, :]  # for simple
-
     y_train = y_total1[train_indices]
     # grab test data
     x_test = x_total1[test_indices, :]  # for simple no context
-    x_test = x_total1[test_indices, :]
     y_test = y_total1[test_indices]
 
     return (
@@ -298,19 +299,19 @@ def grouped_data_train_test_split_util(
 # a separate test dataset like in jelassi for the grouped case
 
 # When sampling simple
-# x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
-#     dataset, None, 0.2, as_torch=True, rng=None
-# )
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
-    dataset, None, 0.2, as_torch=True, rng=None
+    dataset, None, 0.1, as_torch=True, rng=None
 )
+# x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
+#     dataset, None, 0.1, as_torch=True, rng=None
+# )
 
 # print(f"x train shape {x_train.shape}") #b, patchdim, seqlen
 # print(f"x train last token {x_train[0, :, -1]}")
 # print(f"label {Label}")
 
 # print(y_train.shape)
-batch_size = 512  # aim for 512 but debug 5
+batch_size = 256  # aim for 512 but debug 5
 train_size = x_train.shape[0]
 
 train_dataset = DatasetWrapper(x_train, y_train)
@@ -369,7 +370,7 @@ def get_batch_samples(data):
     inputs, target = data
     # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
-    # inputs, target = normalize(inputs, target) # Skip for simple
+    # inputs, target = normalize(inputs, target) # Skip for simple and mixture
 
     # b, pdim, seq_len = inputs.shape # no context in simple
     b, pdim = inputs.shape
@@ -430,15 +431,85 @@ def get_batch_samples(data):
     return t, z, inputs, noisy  # for simple
 
 
-# for i, data in enumerate(train_loader):
-#     t, z, target, xs = get_batch_samples(data)
-#     # print(f"inputs shape {inputs.shape} and target shape {target.shape}")
+def get_batch_samples_test(data):
+    inputs, target = data
+    # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
+    # normalize to [0, 1]
+    # inputs, target = normalize(inputs, target) # Skip for simple and mixture
 
-#     # print(f"returned z.shape {z.shape}") #(B, patc, seq)
-#     # print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
-#     # print(t) # a seq len
-#     # print(f"target shape {target.shape}") #(B, 2patch)
+    # b, pdim, seq_len = inputs.shape # no context in simple
+    b, pdim = inputs.shape
+
+    # Fix time steps
+    # tmin = torch.tensor(10 ** (-9))
+    # tmin = torch.tensor(0.01)
+    # # Change the noise tmax considering how small is d
+    # tmax = torch.tensor(100)
+
+    # logtmin = torch.log(tmin)
+    # logtmax = torch.log(tmax)
+
+    # logt_distrib = Uniform(low=torch.tensor([logtmin]), high=torch.tensor([logtmax]))
+    # logt = logt_distrib.sample(torch.tensor([b]))
+    # t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
+    # # print(f"generated t is {t} and shape {t.shape}")
+
+    t = torch.ones(b) * 15  # fix t the variance at value 15
+    # print(f"the t {t}")
+
+    # get z for this batch from N(0,I)
+    z = torch.randn_like(inputs)
+    # print(f"z shape {z.shape}")
+    sqrttz = torch.zeros_like(z)
+
+    # I am applying the same t noise accross the sequence in one instance
+    # and diffeernt t accross the minibatch
+
+    # sqrttz = torch.einsum('bcd,b->bd', z, torch.sqrt(t))
+    sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))  # For simple only 2-dim
+
+    # print(f"the noise*sqrtt last token {sqrttz[0,:,-1]}")
+
+    # test that the broadcasting happened as expected
+    # print(f" check {sqrttz[0,1,0] / sqrtt[0]} and {z[0, 1, 0]}") #ok
+
+    # Get noisy seq for the batch
+    noisy = torch.zeros_like(inputs)
+    noisy += inputs
+    noisy += sqrttz
+
+    # print(
+    #     f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
+    # )
+
+    # Get fused seq for the batch; query is last; noisy first
+
+    # No fusing no prompt on simple
+    # fused = get_fused_sequences(inputs, noisy)  # this is a batch
+    fused = None
+
+    # print(f"the fused shape {fused.shape}") # ok double patch dim
+    # print(f"the fused last otken chekc {fused[2,:,-1]}")
+    # print(f"the noisy last otken chekc {noisy[2,:,-1]}") # i think as expected
+
+    # so now have inputs (clean), target, z, noisy only, fused, t
+
+    # return t, z, target, fused
+    return t, z, inputs, noisy  # for simple
+
+
+# for i, data in enumerate(test_loader):
+#     t, z, target, xs = get_batch_samples(data)
+#     print(f"inputs shape {xs.shape} and target shape {target.shape}")
+
+#     print(f"returned z.shape {z.shape}") #(B, patc, seq)
+#     print(f"returned xs.shape {xs.shape}") #(B, 2patc, seq)
+#     print(t) # a seq len
+#     print(f"target shape {target.shape}") #(B, 2patch)
+#     # these below were with context
 #     # print(f"the fused last otken chekc {xs[2,:,-1]}")
 #     # print(f"the target last otken chekc {target[2]}") # i think as expected
 
 #     break
+
+# print(len(test_loader))
