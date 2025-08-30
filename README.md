@@ -5,29 +5,21 @@
     *-1. Mke the Enerdit work: priority 1. 
         - WIP
         - Comet panels for Enerdit will be here https://www.comet.com/ai-daor/enerdit/view/new/panels
+
         - Dev step-by-step:
            
-            - 2. Dev new loss / dgen setup to enable learning.
+            - 2. Dev new loss / dgen / model setup to enable learning.
             
-                - WIP [not there yet]
+                - WIP 
                 - Also these noise schedules depend a lot on input distrib and dim
                         reconsider t pattern to learn and what makes it in-context
 
-                - issue with the right supervision and context treatment; architecture works fine on simple denoise with MSE.
-
-                - there might be an issue with the fused context - model learns to cancel each other out - reconceive context input after double check weights and grads on all layers. DyT is telling me something I think.
-
-                - now: make the simple synthetic task work.
-                    - save dataset to disk. Need to simplify as much as possible
-                    to debug the supervision signal.
-
-                    - there is some learning now on the space head; not yet on the time head
+                - both heads learn on simplest task now with larger capacity and the new archi; slow now - need to get onto the gpu, mps not cutting it anymore.
+                
                    
-                    
-
            
 
-    *0. Code for models on the new patch structure datagen (priority 2)
+    *0. Lens 1. Setting2. seCode for models on the new patch structure datagen (priority 2)
 
         *reconsider if sinusoidal or time seq pos embed (now sinusoidal)
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
@@ -49,11 +41,12 @@
         
         * do some input normalization
 
-    *1. factor in the noise drift code from my other repo [the icd first task]
-    *2. there is a bug in the plot loss baselines code [the icd first task]
-    *3. there might be a bug in the batch loss calculation and/or plotting [the icd first task]
-    *4. likely a bug in the 2-head archi [the icd first task]
-    *6. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
+    *1.Lens 1. Setting 1. factor in the noise drift code from my other repo 
+    *2. Lens 1. Setting 1.  there is a bug in the plot loss baselines code 
+    *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
+    #4. Lens 1. Setting 1. There might be a bug in the 2-attn heads repo.
+
+    *6. Lens 1. Setting 2. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
     *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
     *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians(torch jacrev) if I need them.
    

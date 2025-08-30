@@ -271,8 +271,8 @@ class TimeHead(nn.Module):
         self.dyt_time = DyTanh((context_len * d_model))
         self.silu = nn.SiLU()
         self.time_head = nn.Linear(
-            context_len * d_model, input_dim, bias=True
-        )  # project to input_dim
+            context_len * d_model, 1, bias=True
+        )  # make it one directly -as is the supervision and partial U of t
 
     def forward(self, x):
         # print("shape of x as it comes in time head ", x.shape)
@@ -281,11 +281,8 @@ class TimeHead(nn.Module):
         x = self.silu(x)
         x = self.time_head(x)
 
-        # print("shape of x as it comes out of time head ", x.shape)
-        # (B, seq_len, patch dim) with context
-        # add an average pooling layer in time head since it is supposed
-        # to be a U partial wrt t, a scalar
-        return x.mean(-1)
+        print("shape of x as it comes out of time head ", x.shape)
+        return x
 
 
 class SpaceHead(nn.Module):

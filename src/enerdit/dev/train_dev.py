@@ -69,12 +69,13 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 torch.manual_seed(0)
 
 model = EnerdiT(
-    d_model=32,
+    d_model=64,  # 512
     input_dim=1024,  # the way datagen is setup now - comes in one flattened, including in simple
     cf1_init_value=0.5,
     num_heads=1,
     depth=1,
     mlp_ratio=4,
+    patch_dim=2,
     context_len=None,  # no context in simple; will have to change everything
 )
 
@@ -256,7 +257,7 @@ class SpaceLossV2(nn.Module):
         # print(f"checkvalue of ldsm in spacelossv2 {ldsm.mean()}")
 
         lspace = weight_factor * ldsm
-        print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
+        # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
         return torch.mean(lspace)
 
 
@@ -277,6 +278,7 @@ class SpaceTimeLoss(nn.Module):
         query,
         t,
         U,
+        lam_space,
         add_U=False,
         return_both=True,
     ):
@@ -285,7 +287,7 @@ class SpaceTimeLoss(nn.Module):
         tl = self.timel(time_scores, z, clean, query, t)
         # print(f"t now in spacetime loss after I changed the schedule {t}")
 
-        stl = spl + tl
+        stl = lam_space * spl + tl
 
         lamu = 0.001  # add this hyperpar to list
         if add_U:
@@ -336,7 +338,8 @@ class Trainer:
             noisy,  # query last token of sequence non-padded portion
             t,  # t is just 1 per batch instance
             qenergy,
-            add_U=True,  # if to add the energy regularizer to loss
+            lam_space=0.9,  # make this hyper in yaml
+            add_U=False,  # if to add the energy regularizer to loss
             return_both=True,
         )
 
@@ -381,7 +384,8 @@ class Trainer:
 trainer = Trainer()
 
 ##############Dev train on simple one structure small dataset
-epochs = 3  # do a total of around 60; takes around 30min on mps
+epochs = 3  # do a total of around 60; takes around 4hrs
+# on mps with Enerdit with d_mod = 512
 train_size = len(train_loader)
 
 # scheduler = get_cosine_schedule_with_warmup(optimizer, 10, epochs * train_size)
@@ -399,10 +403,11 @@ for epoch in range(epochs):
 
     for i, data in enumerate(train_loader, 0):
         t, z, clean, noisy = get_batch_samples(data)
-        print(f"batch index is {batch_count}")
+        # print(f"batch index is {batch_count}")
         # stop for debug ********************************************
         # if batch_count == 2:
         #     break
+
         batch_count += 1
         # print(f"t is {t} of shape {t.shape}") # shape B
         # print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
@@ -412,6 +417,7 @@ for epoch in range(epochs):
         # print(
         #     f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
         # )
+
         # they do seem equal
         # data from simple task looks ok so far; noisy = clean +sqrt(t)z
         # with clean from N(0, Id)*4 (stdev = 4) and z from N(0, I)
@@ -440,6 +446,8 @@ for epoch in range(epochs):
         #     # print(f"space loss is {loss_sp}\n")
         #     # print(f"time loss is {loss_t}\n")
         print(f"total loss is {loss}\n")
+        print(f"space loss is {loss_sp}\n")
+        print(f"time loss is {loss_t}\n")
 
         epoch_loss += loss
         #     batch_count += 1
