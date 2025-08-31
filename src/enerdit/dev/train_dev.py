@@ -104,14 +104,13 @@ class TimeLossV1(nn.Module):
 
     def forward(self, time_score, z, t):
         """take average over minibatch in this implementation
-        this is for one time t;
+        ; p19
 
-        only on the query TODO@DR: There is a bug in here see V2 if I go back to
-        this.
         """
         bs, d = z.shape
-
-        term1 = (t / d) * time_score
+        weight_factor = t / d
+        print(f"t shape in t loss v1 {znormedsq.shape}")
+        term1 = weight_factor * time_score
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
         # print(f"z normed shape {znormedsq.shape}")
         term2 = 0.5 * (1 - znormedsq / d)
@@ -377,8 +376,42 @@ class Trainer:
 
 trainer = Trainer()
 
+
+def eval_test(model, criterion, dataloader, device):
+    # print(f"loss func is {loss_func_dev}")
+    mse_total = 0
+    model.to(device)
+    # model.eval()
+
+    with torch.no_grad():
+        for i, data in enumerate(dataloader, 0):
+            # for dev
+            if i == 10:
+                break
+            t, z, clean, noisy = get_batch_samples_test(data)
+            #     print(f"t is {t} of shape {t.shape}") # shape B
+            #     print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
+            #     print(f"\n noisy is {noisy} of shape {noisy.shape}")
+            #     print(f"\nz is {z} of shape {z.shape}")
+            #     sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
+            #     print(
+            #     f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
+            # )
+
+            qenergy, space_score, time_score = model(noisy.to(device), t.to(device))
+            loss = criterion(space_score, clean.to(device))  # l2.MSE per batch
+
+            mse_total += loss
+
+    mse = mse_total / len(dataloader)
+    # psnr in db
+    psnr = -10 * math.log10(mse)
+    # print(f"for noise level t {t} psnr from mse over test set {psnr}")
+    return psnr
+
+
 ##############Dev train on simple one structure small dataset
-epochs = 2  # do a total of around 60; takes around 4hrs
+epochs = 3  # do a total of around 60; takes around 4hrs
 # on mps with Enerdit with d_mod = 512
 train_size = len(train_loader)
 
@@ -399,7 +432,7 @@ for epoch in range(epochs):
         t, z, clean, noisy = get_batch_samples(data)
         # print(f"batch index is {batch_count}")
         # stop for debug ********************************************
-        # if batch_count == 2:
+        # if batch_count == 5:
         #     break
 
         batch_count += 1
@@ -442,7 +475,8 @@ for epoch in range(epochs):
         print(f"total loss is {loss}\n")
         print(f"space loss is {loss_sp}\n")
         print(f"time loss is {loss_t}\n")
-        print(f"noc U batch mean {energy.mean()}\n")
+        print(f"U batch first {energy[0]}\n")
+        # print(f"t {t}\n")
 
         epoch_loss += loss
 
@@ -452,12 +486,27 @@ for epoch in range(epochs):
         exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
         exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
+        qnorm = torch.norm(noisy, p=2, dim=-1).mean()
+        clean_norm = torch.norm(clean, p=2, dim=-1).mean()
+
+        exp.log_metrics({"mean batch noisy norm": qnorm}, step=batch_count)
+        exp.log_metrics({"mean batch clean norm": clean_norm}, step=batch_count)
+
+        exp.log_metrics({"mean batch space pred": sh.mean()}, step=batch_count)
+        exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
+        exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
+
+        if i % 4 == 0:
+            # higher is better
+            psnr = eval_test(model, loss_func_dev, test_loader, device)
+            exp.log_metrics({"psnr on test few batches t=15": psnr}, step=batch_count)
+
         exp.log_metrics(
-            {"noc U first in batch": energy[0]},
+            {"U mean batch": energy.mean()},
             step=batch_count,
         )
         exp.log_metrics(
-            {"exp(-noc U) first in batch": math.exp(-energy[0])},
+            {"exp(-U) first in batch": math.exp(-energy[0])},
             step=batch_count,
         )
 
@@ -473,36 +522,6 @@ for epoch in range(epochs):
     print("\tlast LR:", scheduler.get_last_lr())
 
     print("end epoch:", epoch, "====================")
-
-
-def eval_test(model, criterion, dataloader, device):
-    # print(f"loss func is {loss_func_dev}")
-    mse_total = 0
-    model.to(device)
-    model.eval()
-
-    with torch.no_grad():
-        for i, data in enumerate(dataloader, 0):
-            t, z, clean, noisy = get_batch_samples_test(data)
-            #     print(f"t is {t} of shape {t.shape}") # shape B
-            #     print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
-            #     print(f"\n noisy is {noisy} of shape {noisy.shape}")
-            #     print(f"\nz is {z} of shape {z.shape}")
-            #     sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
-            #     print(
-            #     f"compare noisy-clean with sqrt(t)z {torch.mean(noisy-clean-sqrttz)} elemwise {(noisy-clean)[0]} vs {sqrttz[0]}"
-            # )
-
-            qenergy, space_score, time_score = model(noisy.to(device), t.to(device))
-            loss = criterion(space_score, clean.to(device))  # l2.MSE per batch
-
-            mse_total += loss
-
-    mse = mse_total / len(dataloader)
-    # psnr in db
-    psnr = -10 * math.log10(mse)
-    print(f"for noise level t {t} psnr from mse over test set {psnr}")
-    return psnr
 
 
 eval_test(model, loss_func_dev, test_loader, device)

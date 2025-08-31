@@ -218,9 +218,9 @@ dataset, y, w, partition = dggen.sample_simple()
 # torch.save(partition, 'simple_data/partition.to')
 
 dataset = torch.load("simple_data/dataset.to")
-y = torch.load("simple_data/y.to")
-w = torch.load("simple_data/w.to")
-partition = torch.load("simple_data/partition.to")
+# y = torch.load("simple_data/y.to")
+# w = torch.load("simple_data/w.to")
+# partition = torch.load("simple_data/partition.to")
 
 # two gaussian mixture
 # dataset, y, w, partition = dggen.sample_mixture()
@@ -321,7 +321,7 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
 # print(f"label {Label}")
 
 # print(y_train.shape)
-batch_size = 256  # aim for 512 but debug 5
+batch_size = 512  # aim for 512 or 256 or 128  but debug 5
 train_size = x_train.shape[0]
 
 train_dataset = DatasetWrapper(x_train, y_train)
@@ -363,24 +363,28 @@ def get_fused_sequences(X_clean, X_noisy):
 
 
 def normalize(inputs, target):
-    """to 0,1"""
-    dim = target.shape[1]
+    """to 0,1
+    with no context
+    """
     in_min, in_max = torch.min(inputs), torch.max(inputs)
-    target_min, target_max = torch.min(target), torch.max(target)
-    all_min, all_max = min(in_min, target_min), max(in_max, target_max)
-    range = all_max - all_min
+    range = in_max - in_min
+    # target_min, target_max = torch.min(target), torch.max(target)
+    # all_min, all_max = min(in_min, target_min), max(in_max, target_max)
+    # range = all_max - all_min
     # make it safe
-    target[:, : dim // 2] = (target[:, : dim // 2] - all_min) / (
-        torch.finfo(target.dtype).eps + range
-    )
-    return (inputs - all_min) / (range + torch.finfo(inputs.dtype).eps), target
+    # target = (target - all_min) / (
+    #     torch.finfo(target.dtype).eps + range
+    # )
+    # target is dummy
+    return (inputs - in_min) / (range + torch.finfo(inputs.dtype).eps), target
 
 
 def get_batch_samples(data):
     inputs, target = data
     # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
-    # inputs, target = normalize(inputs, target) # Skip for simple and mixture
+    inputs, _ = normalize(inputs, target)
+    # print(inputs) # looks ok
 
     # b, pdim, seq_len = inputs.shape # no context in simple
     b, pdim = inputs.shape
@@ -445,7 +449,7 @@ def get_batch_samples_test(data):
     inputs, target = data
     # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
-    # inputs, target = normalize(inputs, target) # Skip for simple and mixture
+    inputs, _ = normalize(inputs, target)
 
     # b, pdim, seq_len = inputs.shape # no context in simple
     b, pdim = inputs.shape
@@ -464,7 +468,7 @@ def get_batch_samples_test(data):
     # t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
     # # print(f"generated t is {t} and shape {t.shape}")
 
-    t = torch.ones(b) * 15  # fix t the variance at value 15
+    t = torch.ones(b) * 0  # fix t the variance at value 15
     # print(f"the t {t}")
 
     # get z for this batch from N(0,I)

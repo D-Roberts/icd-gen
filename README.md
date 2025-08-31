@@ -11,14 +11,18 @@
             - 2. Dev new loss / dgen / model setup to enable learning.
             
                 - WIP 
-                - the model learns on different datasets / all losses go down. 
-
         
-                - now look into what is learning. Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy).
+                - now that model learns, look into what is learning (back to simple for dev new step). 
+                
+                - Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy).
+
                 - add test set along training. Now that it's learning, need to dev
                 the quality of learning.
+
                 - move back to V1 losses I think.
+                - log preds and query to try get at U increase - maybe htier norms.
                 
+
 
     *0. Lens 1. Setting2. Code for models on the new patch structure datagen
 
@@ -40,12 +44,10 @@
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
     #4. Lens 1. Setting 1. There might be a bug in the 2-attn heads repo.
 
-    *6. Lens 1. Setting 2. Refactor linear and spatial groups 1 and 2 archis to implement exactly the archis in the theory section. 
 
     Overall:
     *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
-    *8. Torchify out of numpy pretty much everything up until matplotlib. Use torch efficient implementations for functions where available, for instance Jacobians(torch jacrev) if I need them. Back to simple for test dev.
-   
+    
     
 
 

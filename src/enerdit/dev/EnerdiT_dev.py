@@ -167,7 +167,10 @@ class EnerdiTFinal(nn.Module):
 
         correction = cf1 * time score
 
-        cf1 hyperpar but consider learning it later
+        cf1 hyperpar but consider learning it later; though no direct supervision
+        as of now available since U layer doesn't feed through the optimization
+        feedback loop
+
         set it to cf1 = 0.1
 
         return : energy for query token
@@ -190,10 +193,10 @@ class EnerdiTFinal(nn.Module):
         # d = d // 2
 
         # query = noisy[:, :d, -1]
-        query = noisy  # in simple this is the query
+        # query = noisy  # in simple this is the query
 
         # sp_pred = sh[:, :, -1]  # the space head should already have d // 2
-        sp_pred = sh  # this needs to come unpatchified with the time embed
+        # sp_pred = sh  # this needs to come unpatchified with the time embed
         # and whatever other context removed
         # just add an average pooling after time embedd removed
 
@@ -201,7 +204,8 @@ class EnerdiTFinal(nn.Module):
         # print(f"th shape in energy {th.shape}")  # (B, seqlen) with context otw (b,)
         # should be scalar according to theory
         # th_pred = th[:, -1]
-        th_pred = th
+
+        # th_pred = th
 
         # In simple, time score also must come unpatchified and one pred only
         # since no context - so detach time embedd token and average pool
@@ -217,27 +221,29 @@ class EnerdiTFinal(nn.Module):
         # for this approximation
 
         cf1 = 0.1
-        correction = cf1 * th_pred
+        correction = cf1 * th.squeeze()  # comes in as (B, 1)
 
         # print(f"in energy sp_pred {sp_pred}")
         # print(f"in energy query {query}")
         # print(f"in energy th_pred {th_pred}")
 
         # TODO@DR: will have to see about signs; query is the noisy
-        # energy = 0.5 * (torch.sum(sp_pred * query, dim=(-1))) - correction
-        # print(f"\nin energy energy {energy}")
+        sp_based = 0.5 * (torch.sum(sh * noisy, dim=(-1)))
+        energy = sp_based - correction
 
-        energy_noc = 0.5 * (torch.sum(sp_pred * query, dim=(-1)))
-        # print(f"\nin energy_noc {energy_noc}")
+        # print(f"\nin energy energy {energy} and shape {energy.shape} ") # B
+        # print(f"\nsh in ener {sh} and shape {sh.shape}") # (B, d)
+        # print(f"\nsp_based in ener {sp_based} and shape {sp_based.shape}") # B,
+        # # some really large nums in sp_based
+        # print(f"\nsqueezed th_based in ener {th.squeeze()} and shape {th.squeeze().shape}") # B
+        # # small numbers in th
+        # print(f"\nquery in ener {noisy} and shape {noisy.shape}") # B, d
 
         # correction is not being learned since U is not fed
         # through the learning loop directly
-        # so I might make it as part of some layer akin to a modulation TODO@DR but not until I see learning
         # leave it as a hyper par right now
 
-        # return energy
-        # Let's work with energy first
-        return energy_noc
+        return energy
 
 
 class PreHead(nn.Module):
