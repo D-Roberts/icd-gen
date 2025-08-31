@@ -210,10 +210,20 @@ class GroupSampler(DataSampler):
 # Ad hoc testing
 dggen = GroupSampler()
 # The simplest Normal
-# dataset, y, w, partition = dggen.sample_simple()
+dataset, y, w, partition = dggen.sample_simple()
+
+# torch.save(dataset, 'simple_data/dataset.to')
+# torch.save(y, 'simple_data/y.to')
+# torch.save(w, 'simple_data/w.to')
+# torch.save(partition, 'simple_data/partition.to')
+
+dataset = torch.load("simple_data/dataset.to")
+y = torch.load("simple_data/y.to")
+w = torch.load("simple_data/w.to")
+partition = torch.load("simple_data/partition.to")
 
 # two gaussian mixture
-dataset, y, w, partition = dggen.sample_mixture()
+# dataset, y, w, partition = dggen.sample_mixture()
 # print(f"shape of simple {dataset.shape}")
 
 # dataset, y, w, partition = dggen.sample_patches()

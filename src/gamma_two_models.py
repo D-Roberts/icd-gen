@@ -11,6 +11,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+# from icd ICML'25
 def weight_matrix(dim_in, dim_out, mode="default"):
     """
     Can use to initialize weight matrices in nn layers
@@ -38,19 +39,21 @@ def weight_matrix(dim_in, dim_out, mode="default"):
 
 # now the sequence has double width due to concat clean and noisy
 class PatchEmbedding(nn.Module):
-    def __init__(self, embed_dim, dim_in):
+    def __init__(self, dim_in, d_model):
         super().__init__()
 
         # aim to embed the clean and noisy together for dim reduction
-        # alternatively I could add the position embed directly in the
+        # alternatively I could add the space embed directly in the
         # 200 dim
 
         # set bias to zero
-        self.projection = torch.nn.Linear(dim_in, embed_dim, bias=False)
+        self.projection = torch.nn.Linear(dim_in, d_model, bias=False)
 
     def forward(self, x):
+        # print(f"layer in patch embed {self.projection}")
+        # print(f"debug patch embed shapes {x.shape}")
         x = self.projection(x)
-        # (batch_size, embed_dim, num_patches)
+        # as expected (B, seq_len, d_model=embeddim)
         return x
 
 
@@ -121,9 +124,9 @@ class TransformerModelV2(nn.Module):
         self.W_PV = weight_matrix(d_model, d_model, mode="default")
         self.rho = 1.0
 
-        self.embedpatch = PatchEmbedding(d_model, dim_input)
+        self.embedpatch = PatchEmbedding(dim_input, d_model)
         self.embedpos = SpaceEmbedding(d_model, context_length)
-        self.unembed = torch.nn.Linear(d_model, dim_input, bias=False)
+        self.unembed = torch.nn.Linear(d_model, dim_input, bias=True)
 
     def forward(self, xs):
         """
@@ -137,18 +140,19 @@ class TransformerModelV2(nn.Module):
         # print(xs.shape) #[80, 200, 10] fused patch dim is 200
         batchsz, n_dim, n_tokens = xs.size()
 
-        # embed TODO@DR: debug this embedding
         permuted = torch.permute(xs, (0, 2, 1))
         patch_embed = self.embedpatch(permuted)
-        # print(f"embed shape********* {patch_embed.shape}")
+        print(f"patch embed shape********* {patch_embed.shape}")
 
         pos_embed = self.embedpos(
             patch_embed
         )  # [1, 10, 32] will add same order each batch
-        # print(f"pos embed shape********* {pos_embed.shape}")
+        print(f"pos embed shape********* {pos_embed.shape}")
 
         embedded = patch_embed + pos_embed
-        # print(f"after embeddings shape ........{embedded.shape}") # they have (20, 10, 32)
+        print(
+            f"after embeddings shape ........{embedded.shape}"
+        )  # they have (20, 10, 32)
 
         # Choose to add a frozen pretrained backbone, as a kernel projector
 
@@ -164,6 +168,7 @@ class TransformerModelV2(nn.Module):
         W_KQ = self.W_KQ
         W_PV = self.W_PV
 
+        # patch seq == context len should be last dim
         # xs_skip_last = xs[:, :, :-1]
         xs_skip_last = embedded[:, :, :-1]
 
@@ -187,8 +192,69 @@ class TransformerModelV2(nn.Module):
         return torch.transpose(out_full, 2, 1), attn_arg
 
 
-MODEL_CLASS_FROM_STR = {
-    "TransformerModelV2": {"class": TransformerModelV2, "alias": "TV2"},
-}
-# define companion dict mapping alias to class string
-MODEL_CLASS_ALIAS_TO_STR = {v["alias"]: k for k, v in MODEL_CLASS_FROM_STR.items()}
+#######################Jelassi style to learn spatial pos
+# simplified model
+
+
+class Sigma(nn.Module):
+    def __init__(self, alpha, p):
+        super(Sigma, self).__init__()
+        self.alpha = alpha
+        self.p = p
+
+    def forward(self, H):
+        # the spatial vit analysis is with the classifc label
+
+        # TODO@DR rederive what is with same shape lable / pixel level pred
+        # return (H ** self.p).sum(-1) + (self.alpha * H).sum(-1)
+        # this was a classification task
+        return (H**self.p) + (self.alpha * H)
+        # Still not right
+
+
+class Attention(nn.Module):
+    def __init__(self, Q, v):
+        super(Attention, self).__init__()
+        self.Q = Q
+        self.v = v
+        self.sm = nn.Softmax(dim=-1)
+
+    def forward(self, X):
+        Q = self.Q
+        v = self.v
+        attn = self.sm(Q)
+        v_X = X @ v
+        return v_X.mm(attn.T)
+
+
+alpha = 0.03
+p = 5
+sigma = Sigma(alpha, p)
+d = 100
+sigma_Q = math.log(math.log(d))
+D = 10
+Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
+N = 100
+# v needs to be shape of w
+v_0 = torch.randn((N, d)) * 0.001
+
+Q = torch.nn.Parameter(Q_0)
+v = torch.nn.Parameter(v_0)
+
+
+# TODO@DR: this is work in progress
+class TransformerSpatial(nn.Module):
+    def __init__(self, Q=Q, v=v, sigma=sigma):
+        super(TransformerSpatial, self).__init__()
+        self.Q = Q
+        self.v = v
+        self.attention = Attention(Q, v)
+        self.sigma = sigma
+
+    def forward(self, X):
+        H = self.attention(X)
+        out = self.sigma(H)
+        # print("what is shape out of spatial Transformer and what " \
+        # "was input shape", X.shape, out.shape) # not right for now
+        print("what is shape out of H in simple spatial Transformer", H.shape)
+        return H

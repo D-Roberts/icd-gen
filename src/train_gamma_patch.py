@@ -18,15 +18,16 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
 from dam_energies import *
-from gamma_two_models import TransformerModelV2
+from gamma_two_models import TransformerModelV2, TransformerSpatial
+
 from groups_datagen import (
     x_train,
     y_train,
     x_test,
     y_test,
-    PreBatchedDataset,
-    train_batched_data,
-    test_batched_data,
+    # PreBatchedDataset,
+    # train_batched_data,
+    # test_batched_data,
 )
 
 
@@ -38,7 +39,7 @@ workspace = Path(".comet_workspace").read_text().strip()
 
 exp = comet_ml.Experiment(
     api_key=API_KEY,
-    project_name="icd-gen",
+    project_name="gamma-patch",
     workspace=workspace,
     auto_metric_logging=True,  # default
 )
@@ -132,10 +133,6 @@ def train(model, args):
     # Model ID string
     ################################################################################
 
-    # From the provided model class string, get the shorthand model name and the class definition
-    nn_fpath = MODEL_CLASS_FROM_STR[nn_model]["alias"]
-    MODEL_CLASS_FROM_STR[nn_model]["class"]
-
     epochs = args.training["epochs"]
     context_len = args.training["context_len"]
     dim_n = args.training["dim_n"]
@@ -146,7 +143,7 @@ def train(model, args):
     opt_suffix = "adamw"
 
     model_fname = "%s_L%d_n%d_e%d_%s_%s" % (
-        nn_fpath,
+        "groupedT2",
         context_len,
         dim_n,
         epochs,
@@ -224,8 +221,9 @@ def train(model, args):
         )
 
     # Freeze the projection layers
-    # model.embedpatch.projection.weight.requires_grad = False
-    # model.unembed.weight.requires_grad = False
+    if args.training["freeze_projections"]:
+        model.embedpatch.projection.weight.requires_grad = False
+        model.unembed.weight.requires_grad = False
 
     # see how many to train
     c1 = 0
@@ -256,18 +254,18 @@ def train(model, args):
     )
 
     # monitor the test error on the full test set every k batches (could be more/less than once per epoch)
-    test_full_mse_loss = report_dataset_loss(
-        model, loss_func, test_loader, "test", device
-    )
+    # test_full_mse_loss = report_dataset_loss(
+    #     model, loss_func, test_loader, "test", device
+    # )
 
     curve_y_losstrain_epochs_avg = []  # will append to this each epoch
     curve_y_losstrain_batch = (
         []
     )  # we begin tracking AFTER the first batch (could get loss nograd first batch here)
 
-    curve_y_losstest_interval = [
-        test_full_mse_loss
-    ]  # will append to this each full_loss_sample_interval batches
+    # curve_y_losstest_interval = [
+    #     test_full_mse_loss
+    # ]  # will append to this each full_loss_sample_interval batches
 
     ################################################################################
     # train loop
@@ -288,6 +286,10 @@ def train(model, args):
         for i, data in enumerate(train_loader, 0):
             inputs, targets = data
 
+            # For debug
+            if running_batch_counter == 3:
+                break
+
             loss, output, output_full, attn_arg = train_step(
                 model,
                 inputs.to(device),
@@ -305,10 +307,12 @@ def train(model, args):
                     model, loss_func, test_loader, "test", device
                 )
 
-                curve_y_losstest_interval.append(loss_test)
-                exp.log_metrics(
-                    {"interval test loss": loss_test}, step=running_batch_counter
-                )
+                # TODO@DR - put this back at some point but the use of
+                # scikit image and nlmeans makes it very very slow
+                # curve_y_losstest_interval.append(loss_test)
+                # exp.log_metrics(
+                #     {"interval test loss": loss_test}, step=running_batch_counter
+                # )
 
             running_batch_counter += 1
             exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
@@ -377,15 +381,17 @@ def train(model, args):
     )
     print("\nModel checkpoint saved to", model_path)
 
-    report_dataset_loss(model, loss_func, train_loader, "train", device)
-    report_dataset_loss(model, loss_func, test_loader, "test", device)
-    report_dataset_psnr(model, loss_func, test_loader, "test", device)
+    # TODO@DR: for now disable test evals in model and datagen dev
+
+    # report_dataset_loss(model, loss_func, train_loader, "train", device)
+    # report_dataset_loss(model, loss_func, test_loader, "test", device)
+    # report_dataset_psnr(model, loss_func, test_loader, "test", device)
 
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
 
-    print("curve_x_losstest_interval", curve_x_losstest_interval)
-    print("curve_y_losstest_interval", curve_y_losstest_interval, "\n")
+    # print("curve_x_losstest_interval", curve_x_losstest_interval)
+    # print("curve_y_losstest_interval", curve_y_losstest_interval, "\n")
 
     return (
         model,
@@ -407,6 +413,7 @@ def main(args):
         add_frozen_kernel=args.training["add_frozen_kernel"],
         backbone="ViT",
     )
+    # model = TransformerSpatial()
     print(model)
 
     model.to(device)

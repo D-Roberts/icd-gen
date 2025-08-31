@@ -11,14 +11,9 @@
             - 2. Dev new loss / dgen / model setup to enable learning.
             
                 - WIP 
-                - step up the difficulty - make datagen a mixture with a 50-50
-                chance between two stdev 1 and 4. Model still learns.
-                - next put the patches in. An adhoc put the patches together first 
-                to mimic image to image as in simple and mixture. Learns / Losses 
-                fo down on this too. 
+                - the model learns on different datasets / all losses go down. 
 
-                - save dataset.
-
+        
                 - now look into what is learning. Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy).
                 - add test set along training. Now that it's learning, need to dev
                 the quality of learning.
@@ -32,24 +27,13 @@
 
         * Rethink how the groups and group indeces are generated.
 
+        * Model 2 - is work in progress.
+
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways. For pred and loss- slice out zeros.
 
         * compare MAE with one other loss (no point in MSE). 
-
-       * * also partition of indeces itneresting. Maybe leverage it more. Make it random. [later]*
-
-        * MAE works better than MSE as theory suggests
-
-        * Not better with the large GPT2 frozen backbone on the small set. Haven't tested the ViT yet.
-
-        * nlmeans per one-shot does better than a learned one-layer attention with pos embeds and input output projections
-
-        * When mimic an in-context where partitions generated per batch - model perf goes down.
-
-        * save the datasets after generating and load from disk- it gets slow.
         
-        * do some input normalization
 
     *1.Lens 1. Setting 1. factor in the noise drift code from my other repo 
     *2. Lens 1. Setting 1.  there is a bug in the plot loss baselines code 

@@ -63,7 +63,7 @@ class GroupSampler(DataSampler):
 
     def __init__(
         self,
-        N=5000,
+        N=100,  # small for dev
         D=10,
         d=None,
         L=None,
@@ -115,8 +115,7 @@ class GroupSampler(DataSampler):
     def partition(self, D, L, seed=42):
         """
         Get the
-        TODO@DR: if I want every S set different, I must change the seed here.
-        in-context variation task to task"""
+        TODO@DR: not sure about the see here or not for in-context"""
         # torch.manual_seed(seed)
 
         return torch.randperm(D).view(L, -1)
@@ -188,11 +187,16 @@ class GroupSampler(DataSampler):
         )
 
         # TODO@DR I'll have to reason how the seeds for generators go here
+        # and how the groups - gammas work
+        count_gamma1 = 0
+        count_gamma2 = 0
         for i in range(X_clean.shape[0]):
             if y[i] == 1:
                 gnoise = gamma_dist1.sample((1,))
+                count_gamma1 += 1
             else:  # -1
                 gnoise = gamma_dist2.sample((1,))
+                count_gamma2 += 1
 
             # gamma is multiplicative
             noisy_patches = X_clean[i, :, :] * gnoise.view(-1, 1)
@@ -200,6 +204,8 @@ class GroupSampler(DataSampler):
 
         # so each instance will have noise from either gamma1 or gamma2 randomly as y is drawn but related to
         # how the underlying data is generated. Not sure if I want to do this or not.
+
+        print(f"how many times gamma1 {count_gamma1} and gamma2 {count_gamma2}")
         return X_clean, X_gnoisy, y
 
     def get_fused_sequence(self, X_clean=None, X_dirty=None):
@@ -228,14 +234,24 @@ class GroupSampler(DataSampler):
         # want to have dirty first in fused
         fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
 
-        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different
+        # print(f"are dirty and clean diff? {X_dirty != X_clean}") #yes they are different
 
         return fused_seq, label
 
 
 # Ad hoc testing
 dggen = GroupSampler()
-dataset, y, w, partition = dggen.sample_xs()
+# dataset, y, w, partition = dggen.sample_xs()
+# torch.save(dataset, 'group_data/dataset.to')
+# torch.save(y, 'group_data/y.to')
+# torch.save(w, 'group_data/w.to')
+# torch.save(partition, 'group_data/partition.to')
+
+dataset = torch.load("group_data/dataset.to")
+y = torch.load("group_data/y.to")
+w = torch.load("group_data/w.to")
+partition = torch.load("group_data/partition.to")
+
 
 # dataset[:,-1] = 0.0
 # print("last patch?", dataset[0,-1].shape) # yeap
@@ -324,11 +340,12 @@ x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
     fused_seq, label, 0.2, as_torch=True, rng=None
 )
 
-# print(x_train.shape)
-# print(y_train.shape)
+print(f"train X {x_train.shape}")
+print(f"train y {y_train.shape}")
 
 
-# **************************************Get batch groups for In-Context Learning Style Training
+############################################
+# **************************************Get batch groups for One In-Context Learning Style Training
 from torch.utils.data import Dataset, DataLoader
 
 
@@ -346,6 +363,7 @@ class PreBatchedDataset(Dataset):
 
 
 # Train and test separatelly makes sense
+
 
 num_batches_train = 100  # when a real number of batches - this takes a while
 batch_size = 128
@@ -382,10 +400,10 @@ def get_batch_groups(num_batches, N=batch_size):
     return train_set
 
 
-train_batched_data = get_batch_groups(num_batches=num_batches_train, N=batch_size)
-test_batched_data = get_batch_groups(
-    num_batches_test, batch_size
-)  # the case with groups per batch
+# train_batched_data = get_batch_groups(num_batches=num_batches_train, N=batch_size)
+# test_batched_data = get_batch_groups(
+#     num_batches_test, batch_size
+# )  # the case with groups per batch
 
 
 # # Adhoc test ****************************************
