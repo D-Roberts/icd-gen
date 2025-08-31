@@ -22,6 +22,7 @@ from dgen_for_gaussian import (
     train_loader,
     test_loader,
     get_batch_samples_test,
+    get_batch_samples_w_context,
 )
 
 from EnerdiT_dev import *
@@ -312,11 +313,24 @@ class Trainer:
         pass
 
     def train_step(
-        self, model, noisy, clean, z, optimizer, spacetime_loss, t, dev_loss
+        self,
+        model,
+        noisy,
+        clean,
+        noisy_context,
+        clean_context,
+        z,
+        optimizer,
+        spacetime_loss,
+        t,
+        dev_loss,
+        device,
     ):
         optimizer.zero_grad()
 
-        qenergy, space_score, time_score = model(noisy, t)
+        qenergy, space_score, time_score = model(
+            noisy, noisy_context, clean_context, t, device
+        )
 
         # no need for simple img level
         # space_score = torch.permute(space_score, (0, 2, 1))
@@ -384,9 +398,12 @@ def eval_test(model, criterion, dataloader, device):
     with torch.no_grad():
         for i, data in enumerate(dataloader, 0):
             # for dev
-            if i == 10:
+            if i == 2:
                 break
-            t, z, clean, noisy = get_batch_samples_test(data)
+            # t, z, clean, noisy = get_batch_samples_test(data)
+
+            # add in context
+
             #     print(f"t is {t} of shape {t.shape}") # shape B
             #     print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
             #     print(f"\n noisy is {noisy} of shape {noisy.shape}")
@@ -410,7 +427,7 @@ def eval_test(model, criterion, dataloader, device):
 
 ##############Dev train on simple one structure small dataset
 epochs = 1  # do a total of around 60; takes around 4hrs
-# on mps with Enerdit with d_mod = 512
+# on mps with Enerdit 1 block 1 head with d_mod = 512
 train_size = len(train_loader)
 
 scheduler = get_cosine_schedule_with_warmup(optimizer, 0, epochs * train_size)
@@ -426,17 +443,22 @@ for epoch in range(epochs):
     epoch_loss = 0.0
     energy_epoch = 0.0
 
-    for i, data in enumerate(train_loader, 0):
-        t, z, clean, noisy = get_batch_samples(data)
+    for i, data in enumerate(train_loader):
+        # t, z, clean, noisy = get_batch_samples(data)
+        t, z, clean, noisy, noisy_context, clean_context = get_batch_samples_w_context(
+            data
+        )
         # print(f"batch index is {batch_count}")
         # stop for debug ********************************************
-        # if batch_count == 5:
+        # if batch_count == 3:
         #     break
 
         batch_count += 1
         # print(f"t is {t} of shape {t.shape}") # shape B
         # print(f"\n clean is {clean} of shape {clean.shape}") #shape (B, d)
         # print(f"\n noisy is {noisy} of shape {noisy.shape}")
+        # print(f"\n clean_context is {clean_context} of shape {clean_context.shape}") #shape (B, d)
+        # print(f"\n noisy_context is {noisy_context} of shape {noisy_context.shape}")
         # print(f"\nz is {z} of shape {z.shape}")
         # sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))
         # print(
@@ -458,11 +480,14 @@ for epoch in range(epochs):
             model,
             noisy.to(device),
             clean.to(device),
+            noisy_context.to(device),
+            clean_context.to(device),
             z.to(device),
             optimizer,
             spacetimeloss_dev,
             t.to(device),
             loss_func_dev,
+            device,
         )
 
         #     # print(f"energy on query {energy.shape}") # this is for the minibatch
@@ -494,19 +519,20 @@ for epoch in range(epochs):
         exp.log_metrics({"batch loss space": loss_sp}, step=batch_count)
         exp.log_metrics({"batch loss time": loss_t}, step=batch_count)
 
-        if i % 4 == 0:
-            # higher is better
-            psnr = eval_test(model, loss_func_dev, test_loader, device)
-            exp.log_metrics({"psnr on test few batches t=15": psnr}, step=batch_count)
+        # Disable test to add in context
+        # if i % 4 == 0:
+        #     # higher is better
+        #     psnr = eval_test(model, loss_func_dev, test_loader, device)
+        #     exp.log_metrics({"psnr on test few batches t=15": psnr}, step=batch_count)
 
         exp.log_metrics(
             {"U mean batch": energy.mean()},
             step=batch_count,
         )
-        exp.log_metrics(
-            {"exp(-U) first in batch": math.exp(-energy[0])},
-            step=batch_count,
-        )
+        # exp.log_metrics(
+        #     {"exp(-U) first in batch": math.exp(-energy[0])},
+        #     step=batch_count,
+        # )
 
     #     # CHeck that the weights are updating (look at several)
     #     for name, param in model.named_parameters():
@@ -522,4 +548,5 @@ for epoch in range(epochs):
     print("end epoch:", epoch, "====================")
 
 
-eval_test(model, loss_func_dev, test_loader, device)
+# comment out to add in context
+# eval_test(model, loss_func_dev, test_loader, device)

@@ -305,9 +305,6 @@ def grouped_data_train_test_split_util(
     )
 
 
-# Get train and test TODO@DR reason why split train test it this way vs generate
-# a separate test dataset like in jelassi for the grouped case
-
 # When sampling simple
 x_train, y_train, x_test, y_test = grouped_data_train_test_split_util(
     dataset, None, 0.1, as_torch=True, rng=None
@@ -363,9 +360,7 @@ def get_fused_sequences(X_clean, X_noisy):
 
 
 def normalize(inputs, target):
-    """to 0,1
-    with no context
-    """
+    """to 0,1"""
     in_min, in_max = torch.min(inputs), torch.max(inputs)
     range = in_max - in_min
     # target_min, target_max = torch.min(target), torch.max(target)
@@ -379,7 +374,8 @@ def normalize(inputs, target):
     return (inputs - in_min) / (range + torch.finfo(inputs.dtype).eps), target
 
 
-def get_batch_samples(data):
+def get_batch_samples(data, data_context):
+    # inputs is a batch
     inputs, target = data
     # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
     # normalize to [0, 1]
@@ -429,6 +425,8 @@ def get_batch_samples(data):
     #     f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
     # )
 
+    # Need to add context for each instance as well
+
     # Get fused seq for the batch; query is last; noisy first
 
     # No fusing no prompt on simple
@@ -443,6 +441,81 @@ def get_batch_samples(data):
 
     # return t, z, target, fused
     return t, z, inputs, noisy  # for simple
+
+
+def get_batch_samples_w_context(data):
+    # inputs is a batch
+    inputs, target = data
+    # print(f"the inputs last otken chekc {inputs[2, :, -1]}") # i think as expected
+    # normalize to [0, 1]
+    inputs, _ = normalize(inputs, target)
+    # print(inputs) # looks ok
+
+    # b, pdim, seq_len = inputs.shape # no context in simple
+    b, pdim = inputs.shape
+
+    # Sample time steps
+    # tmin = torch.tensor(10 ** (-9))
+    tmin = torch.tensor(0.01)
+    # Change the noise tmax considering how small is d
+    tmax = torch.tensor(100)
+
+    logtmin = torch.log(tmin)
+    logtmax = torch.log(tmax)
+
+    logt_distrib = Uniform(low=torch.tensor([logtmin]), high=torch.tensor([logtmax]))
+    logt = logt_distrib.sample(torch.tensor([b]))
+    t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
+    # print(f"generated t is {t} and shape {t.shape}")
+    # print(f"the t {t}")
+
+    # get z for this batch from N(0,I)
+    z = torch.randn_like(inputs)
+    # print(f"z shape {z.shape}")
+    sqrttz = torch.zeros_like(z)
+
+    # I am applying the same t noise accross the sequence in one instance
+    # and diffeernt t accross the minibatch
+
+    # sqrttz = torch.einsum('bcd,b->bd', z, torch.sqrt(t))
+    sqrttz = torch.einsum("bd,b->bd", z, torch.sqrt(t))  # For simple only 2-dim
+
+    # print(f"the noise*sqrtt last token {sqrttz[0,:,-1]}")
+
+    # test that the broadcasting happened as expected
+    # print(f" check {sqrttz[0,1,0] / sqrtt[0]} and {z[0, 1, 0]}") #ok
+
+    # Get noisy seq for the batch
+    noisy = torch.zeros_like(inputs)
+    noisy += inputs
+    noisy += sqrttz
+
+    # print(
+    #     f"what does noisy look like {torch.mean(noisy), torch.var(noisy), noisy.shape}"
+    # )
+
+    # Need to add context for each instance as well
+    # for right now they are the same but they will be at a different scale
+    # to mimic the original unpatched while the input query is patched down
+    # to be passed through the model (subject to change)
+
+    # I want the same noise added; I should have a new data point here
+    # drawn from the same distrib with inputs in datagen
+    # but approx it now TODO@DR
+    clean_context = torch.randn_like(inputs)
+    clean_context = torch.std(inputs) * clean_context + torch.mean(inputs)
+
+    noisy_context = torch.zeros_like(inputs)
+    noisy_context += clean_context
+
+    # print(f"the fused shape {fused.shape}") # ok double patch dim
+    # print(f"the fused last otken chekc {fused[2,:,-1]}")
+    # print(f"the noisy last otken chekc {noisy[2,:,-1]}") # i think as expected
+
+    # so now have inputs (clean), target, z, noisy only, fused, t
+
+    # return t, z, target, fused
+    return t, z, inputs, noisy, noisy_context, clean_context
 
 
 def get_batch_samples_test(data):
@@ -468,7 +541,7 @@ def get_batch_samples_test(data):
     # t = torch.exp(logt).squeeze(-1)  # like 0.15 to 227 etc
     # # print(f"generated t is {t} and shape {t.shape}")
 
-    t = torch.ones(b) * 0  # fix t the variance at value 15
+    t = torch.ones(b) * 15  # fix t the variance at value 15
     # print(f"the t {t}")
 
     # get z for this batch from N(0,I)

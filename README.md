@@ -14,14 +14,12 @@
         
                 - now that model learns, look into what is learning (back to simple for dev new step). 
                 
-                - Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy).
+                - Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
 
-                - add test set along training. Now that it's learning, need to dev
-                the quality of learning.
+                - put context back in.
 
-                - move back to V1 losses I think.
-                - log preds and query to try get at U increase - maybe htier norms.
-                
+
+    
 
 
     *0. Lens 1. Setting2. Code for models on the new patch structure datagen

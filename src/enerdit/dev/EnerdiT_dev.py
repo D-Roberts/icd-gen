@@ -82,6 +82,22 @@ class SpaceEmbedding(nn.Module):
         return self.se[:, : x.size(1)]
 
 
+class ContextEmbedding(nn.Module):
+    def __init__(self, d_model, vocab_size=2):
+        """
+        encode if 0=clean or 1=noisy akin to question answering bert style embeddings
+        for in context tokens
+
+        aim to have noisy first clean second
+        will be added to the fused noisy clean context to tell the model what's what
+        """
+        super().__init__()
+        self.embedding_layer = nn.Embedding(vocab_size, d_model)
+
+    def forward(self, x):
+        return self.embedding_layer(x)
+
+
 # inspired from https://github.com/facebookresearch/DiT/blob/main/models.py#L26
 class TimeEmbedding(nn.Module):
     """We just have to have them.
@@ -243,6 +259,8 @@ class EnerdiTFinal(nn.Module):
         # through the learning loop directly
         # leave it as a hyper par right now
 
+        # TODO@DR: consider a normalization term
+
         return energy
 
 
@@ -255,7 +273,7 @@ class PreHead(nn.Module):
         super().__init__()
 
         # context + 1 because of the concatenated time embed
-        self.dyt_final = DyTanh((context_len + 1, d_model))
+        self.dyt_final = DyTanh((context_len + 2, d_model))
         self.silu = nn.SiLU()
 
         # TODO@DR: not sure yet about the modulation.
@@ -341,14 +359,15 @@ class EnerdiTBlock(nn.Module):
     def __init__(self, d_model, context_len, num_heads=1, mlp_ratio=4.0):  # as in DiT
         super().__init__()
 
-        # context_len+1 bc I conditioned with the time embed
-        self.dyt1 = DyTanh((context_len + 1, d_model))
+        # context_len+2 bc I conditioned with the time embeds - 2kinds now
+        # and the two context tokens (noisy and clean)
+        self.dyt1 = DyTanh((context_len + 4, d_model))
 
         self.attn = Attention(
             d_model, num_heads, qkv_bias=True
         )  # identity and not norms on internal qkv
 
-        self.dyt2 = DyTanh((context_len + 1, d_model))
+        self.dyt2 = DyTanh((context_len + 4, d_model))
 
         mlp_hidden_dim = int(0.4 * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
@@ -360,12 +379,13 @@ class EnerdiTBlock(nn.Module):
             drop=0,
         )
 
-    def forward(self, x, time_embed):
+    def forward(self, x, time_embed, time_embed1, embedded_context):
         # print(f"shape of time emebde w simple {time_embed.shape}")
         # print(f"shape of x near time emebde w simple {x.shape}")
 
         # Condition on the time embedding in each block (only 1 block used at this time)
-        x = torch.cat([x, time_embed], dim=1)
+        # print(f"what is concat {embedded_context.shape}")
+        x = torch.cat([x, time_embed, time_embed1, embedded_context], dim=1)
         x = self.dyt1(x)
         x = x + self.attn(x)
         x = self.dyt2(x)
@@ -393,11 +413,6 @@ class EnerdiT(nn.Module):
     ):
         super(EnerdiT, self).__init__()
 
-        # Can't use the Patch embedder from timm bc my patches already come
-        # in patchified for in-context problem.
-
-        # self.patch_embed = PatchEmbedding(input_dim, d_model)
-
         # 1 is for input channesl which is grayscale 1; patch_dim is one dim
         # so area is p*p; input_dim is likewise h
         self.h = int(math.sqrt(input_dim))  # for us image comes flattened
@@ -417,6 +432,16 @@ class EnerdiT(nn.Module):
             mint=0,
             maxt=10000,
         )
+        self.time_embed1 = TimeEmbedding(
+            d_model,
+            frequency_embedding_size=256,
+            mint=0,
+            maxt=10000,
+        )
+
+        # on concat noisy first clean after
+        self.patch_embed_context = PatchEmbedding(input_dim, d_model)
+        self.context_seq_embed = ContextEmbedding(d_model=d_model, vocab_size=2)
 
         ######################################Before this - inputs embedding
         # context len now is number of patches from Patch making ViT style
@@ -487,7 +512,8 @@ class EnerdiT(nn.Module):
         x = x.reshape(shape=(b, num_p * pdim))
         return x
 
-    def forward(self, x, t):
+    def forward(self, x, noisy_context, clean_context, t, device):
+        """x is the noisy query"""
         # print("what shape comes the batch into Enerdit ", x.shape)
         # b_s, in_d, context_len = x.shape
         b_s, in_d = x.shape  # for simple only b and d dim
@@ -527,25 +553,43 @@ class EnerdiT(nn.Module):
         # concatenate 1 to the sequence; porbably should do this always
         # and not to each patch token
 
-        # TODO@DR: experiment with where to concat the time_embed
-        # and the other archi choices including res con and how many dytanh and silus
-        # and if to have the prehead at all
+        # Add another time embedding for sqrt(t/d) scale
+        new_t = torch.sqrt(t) / self.h
+        time_embed1 = self.time_embed1(new_t)
+        time_embed1 = time_embed1.unsqueeze(1)
 
-        ##################Input normalization and embedding area over
+        ###############Put context in
+
+        context = torch.stack((noisy_context, clean_context), dim=1)
+        # print(f"shape of context before embed {context.shape}")
+
+        embed_context_patch = self.patch_embed_context(context)
+        # print(f"shape of embed_context_patch  {embed_context_patch.shape}")
+
+        # have a context of only one noisy and one clean
+        indices = torch.LongTensor([0, 1])
+        embed_context_seq = self.context_seq_embed(indices.to(device))
+        # print(f"embed_context_seq {embed_context_seq}")
+        # print(f"shape of embed_context_seq  {embed_context_seq.shape}")
+        embedded_context = embed_context_patch + embed_context_seq
+        # print(f"shape of embed_context_seq  {embedded_context.shape}")
+
+        ##################Input embedding area over
 
         # add enerdit blocks
         for block in self.blocks:
-            x = block(x, time_embed)
+            x = block(x, time_embed, time_embed1, embedded_context)
 
         # I need to detach timeembed now before heads
         # But I need the prehead layer to reshape first
 
-        # print(f"check out x after block {x.shape}") #[5, 257, 32]) (b, context_len+1, d_model)
+        # print(f"check out x after block {x.shape}") #[5, 257, 32]) (b, context_len+1, d_model) or 258 of 2 kinds
         # x = self.prehead_linear(x) #I'll take this out
         # print(f"check out x after prehead layer {x.shape}")#[5, 257, 32])
 
-        x = x[:, :-1, :]  # this is where I detach the time embed
+        x = x[:, :-4, :]  # this is where I detach the time embed both kinds
         # print(f"check out x after time embed detached {x.shape}") #[5, 256, 32]) ok
+        # take all conditionining off inlcuding context
 
         # And unpatchify here before heads
         x = self.unpatchify(x)
