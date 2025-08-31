@@ -102,20 +102,23 @@ class TimeLossV1(nn.Module):
         super(TimeLossV1, self).__init__()
         pass
 
-    def forward(self, time_score, z, t):
+    def forward(self, time_score, z, clean, query, t):
         """take average over minibatch in this implementation
         ; p19
 
         """
         bs, d = z.shape
         weight_factor = t / d
-        print(f"t shape in t loss v1 {znormedsq.shape}")
-        term1 = weight_factor * time_score
+        # print(f"t shape in t loss v1 {t.shape}")
+        # print(f"weight_factor th {weight_factor.shape}")
+        # print(f"time_score {time_score.squeeze().shape}") # comes with 1 extra dim
+        term1 = weight_factor * time_score.squeeze()
+
         znormedsq = torch.norm(z, p=2, dim=-1) ** 2
         # print(f"z normed shape {znormedsq.shape}")
         term2 = 0.5 * (1 - znormedsq / d)
         ltime = (term1 - term2) ** 2
-        # print(f"ltime before minibatch mean {ltime.shape}")  # (B,) ok
+        # print(f"ltime before minibatch mean {ltime.shape}")
         # mean over minibatch
         return torch.mean(ltime)
 
@@ -126,13 +129,7 @@ class TimeLossV2(nn.Module):
         pass
 
     def forward(self, time_score, z, clean, query, t):
-        """take average over minibatch in this implementation
-        this is for one time t;
-
-        only on the query so use y and x directly for signal
-        supervision
-        label is clean on the noisy query last sequence token
-        """
+        """p4; prediction is scalar; t is sampled for thebatch"""
         bs, d = z.shape  # on last token only
 
         weight_factor = (t / d) ** 2
@@ -169,41 +166,38 @@ class SpaceLossV1(nn.Module):
         super(SpaceLossV1, self).__init__()
         pass
 
-    def forward(self, sp, z, t):
+    def forward(self, space_score, z, clean, query, t):
         """
-        use t from query last token. tt is the t from uniform on seq
-        sp and z correspond to query token
-
-        TODO@DR: there is a bug on t I think - see message in TimeLossV1
-        if I end up coming back to V1 but I am not certain this is
-        the right supervision for the heads.
+        p19
+        sp is space head prediction of shape of z
 
         """
         # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
         # print(f"what is x shape - the noisy in SpaceLoss {x.shape}")
         # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
-        # so here x is (B, dim, seq_len) while y=clean target on last noisy query
-        # is (B, dim)
 
         # get z from clean query, noisy query and t (assume t is not 0, which
         # should not be in training)
         bs, d = z.shape
-        # print(f"d is ....{d}") # patch size (8x8 for example = 64)
+        # print(f"d is ....{d}") #
 
         # space loss term1 (as in eq 43); non neg and non-zero
-        term1 = torch.sqrt(t / d) * sp
+        weight_term1 = torch.sqrt(t / d)
+        # print(f"in space loss weight_term1 shape {weight_term1.shape}")
+        # print(f"in space loss space_score shape {space_score.shape}")
+
+        # multiply along batch dim
+        term1 = torch.einsum("bd,b->bd", space_score, weight_term1)
         term2 = z / torch.sqrt(torch.tensor(d))
 
+        # print(f"in space loss term2 shape {term2.shape}")
         # print(f"what is torch.sqrt(t / d) in space loss {torch.sqrt(t / d)}")
         subtract = term1 - term2
         # print(f"in space loss subtr shape {subtract.shape}") #3, 64
 
+        # dim 1 is the input dimension (not the batch or the context when context)
         lspace = (torch.norm(subtract, p=2, dim=1)) ** 2
 
-        # test to see if grads if mse like loss
-        # lspace = (torch.norm(sp - term2, p=2, dim=1)) ** 2
-
-        # take norm over the input dim
         # print(f"what is lspace {lspace.shape} and over minibatch {lspace.mean()}")
         return torch.mean(lspace)
 
@@ -270,8 +264,12 @@ class SpaceTimeLoss(nn.Module):
 
     def __init__(self):
         super(SpaceTimeLoss, self).__init__()
-        self.spacel = SpaceLossV2()
-        self.timel = TimeLossV2()
+
+        # self.spacel = SpaceLossV2()
+        # self.timel = TimeLossV2()
+
+        self.spacel = SpaceLossV1()
+        self.timel = TimeLossV1()
 
     def forward(
         self,
@@ -411,7 +409,7 @@ def eval_test(model, criterion, dataloader, device):
 
 
 ##############Dev train on simple one structure small dataset
-epochs = 3  # do a total of around 60; takes around 4hrs
+epochs = 1  # do a total of around 60; takes around 4hrs
 # on mps with Enerdit with d_mod = 512
 train_size = len(train_loader)
 

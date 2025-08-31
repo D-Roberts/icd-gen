@@ -46,9 +46,9 @@
 
 
     Overall:
-    *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix.
+    *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix. 
     
-    
+    *8. Input normalizations accross the board.
 
 
 ### To train:
