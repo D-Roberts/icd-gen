@@ -20,8 +20,8 @@
 
                 - put context back in - with a fully new token from the same distrib (I have an improv right now)
 
+                - to be continued.
 
-    
 
 
     *0. Lens 1. Setting2. Code for models on the new patch structure datagen

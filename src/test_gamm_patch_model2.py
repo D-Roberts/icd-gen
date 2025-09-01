@@ -71,7 +71,7 @@ def partition(D, L):
 
 # Custom num of patches D and of groups L
 torch.manual_seed(0)
-D, L = 16, 2
+D, L = 4, 2
 S = partition(D, L)
 print(f"partition {S}")  # C=2; L = 5 # yes, random indeces in each group
 # of cardinality C = D/L
@@ -81,34 +81,9 @@ print(f"partition {S}")  # C=2; L = 5 # yes, random indeces in each group
 # perform non local means when they succeed at denoising these groups by
 # provably showing recovered spatial structure via these groups.
 #
-# def make_data(N, D, L, d, S, w):
-#     y = torch.randn(N).sign()
-#     q = math.log(d) / D
-#     sigma = 1 / math.sqrt(d)
-#     noise = torch.randn(N, D, d) * sigma
-#     X = torch.zeros(N, D, d)
-#     # deltas = torch.rand(N, D) - q
-#     # deltas = ((deltas.sgn() - 1).sgn() * (torch.rand(N, D) - 0.5).sgn()).sgn()
-#     # X = X
-#     for i in range(N):
-#         l = torch.randint(L, (1,))[0]
-#         R = S[l]
-#         for j in range(D):
-#             if j in R:
-#                 X[i][j] = y[i] * w + noise[i][j]
-#             else:
-#                 prob = 2 * (torch.rand(1) - 0.5)
-#                 if prob > 0 and prob < q / 2:
-#                     delta = 1
-#                 elif prob < 0 and prob > -q / 2:
-#                     delta = -1
-#                 else:
-#                     delta = 0
-#                 X[i][j] = delta * w + noise[i][j]
-#     return X, y, w, S
 
 N = 3  # num of records/instances
-d = 16 * 16  # let's make the pathces 3x3
+d = 4  #
 
 # make feature and normalize
 w = torch.randn(d)
@@ -129,12 +104,12 @@ def make_data(N, D, L, d, S, w):
     y = torch.randn(N).sign()  # this is the label 1, -1
     print(f"y {y}")
     q = math.log(d) / D
-    print(f"the cutoff q/2 on prob to set delta multiplier to 1, 0, or -1 {q/2}")
+    # print(f"the cutoff q/2 on prob to set delta multiplier to 1, 0, or -1 {q/2}")
 
     sigma = 1 / math.sqrt(d)  # this is the std dev for the noise
     noise = torch.randn(N, D, d) * sigma  # noise eps is same shape with X page4
     X = torch.zeros(N, D, d)
-    print(f"X shape {X.shape}")
+    # print(f"X shape {X.shape}")
     # deltas = torch.rand(N, D) - q
     # # deltas = ((deltas.sgn() - 1).sgn() * (torch.rand(N, D) - 0.5).sgn()).sgn()
     # # X = X
@@ -150,9 +125,9 @@ def make_data(N, D, L, d, S, w):
         # but the group with the signal set will vary randomly per instance.
 
         # groups only to pick from, so l can be either 0 or 1
-        print(f"pick group l = {l}")
+        # print(f"pick group l = {l}")
         R = S[l]
-        print(f"we picked group l {l} and the indices in it are R {R}")
+        # print(f"we picked group l {l} and the indices in it are R {R}")
         # we have fewer groups than instance so each group can be picked
         # more than once
 
@@ -170,17 +145,17 @@ def make_data(N, D, L, d, S, w):
 
             else:
                 prob = 2 * (torch.rand(1) - 0.5)
-                print(
-                    f"for the instance {i} and patch {j} which is not in picked group {R} we will use a probability to either set Xij to a +w feature or -wfeature or pure noise irrespective of the label y value - so random set {prob}"
-                )
-                print(f"delta 1 for prob in 0 to {q/2} and -1 for <0 to {-q/2} rest 0")
+                # print(
+                #     f"for the instance {i} and patch {j} which is not in picked group {R} we will use a probability to either set Xij to a +w feature or -wfeature or pure noise irrespective of the label y value - so random set {prob}"
+                # )
+                # print(f"delta 1 for prob in 0 to {q/2} and -1 for <0 to {-q/2} rest 0")
                 if prob > 0 and prob < q / 2:
                     delta = 1
                 elif prob < 0 and prob > -q / 2:
                     delta = -1
                 else:
                     delta = 0
-                print(f"delta here is {delta}")  # there are a lot more 0 than 1 or
+                # print(f"delta here is {delta}")  # there are a lot more 0 than 1 or
                 # -1 in which case the featuer is just noise.
                 # self-q is the problem easier or harder with lots of noise?
                 X[i][j] = delta * w + noise[i][j]
@@ -195,19 +170,6 @@ def make_data(N, D, L, d, S, w):
 # highest should be for the patches in the group with the signal set.
 
 X, y, w, S = make_data(N, D, L, d, S, w)
-
-
-plt.figure(figsize=(4, 4))
-S_matrix = torch.eye(D, D)
-for x in S:
-    print(f"x in S is {x}")  # this is a group in this case of 2 indices
-    # so that it can be plotted in 2D; in 3D they'd be cubes in space
-    S_matrix[x[0], x[1]] = 1 / 2
-    S_matrix[x[1], x[0]] = 1 / 2
-# print(f"S_matrix {S_matrix}")
-plt.matshow(S_matrix, cmap="Greys")
-plt.axis("off")
-plt.savefig("test_partition.png")
 
 
 # torch.save(X, "data/X.to")
@@ -250,9 +212,9 @@ class Sigma(nn.Module):
 
     def forward(self, H):
         sig_term1 = H**self.p
-        print(f"sig term 1 shape {sig_term1.shape} and val {sig_term1}")
+        # print(f"sig term 1 shape {sig_term1.shape} and val {sig_term1}")
         sig_term2 = self.alpha * H
-        print(f"sig term 2 shape {sig_term2.shape} and val {sig_term2}")
+        # print(f"sig term 2 shape {sig_term2.shape} and val {sig_term2}")
         # without sum [5, 10] which is (B, D)
         return sig_term1.sum(-1) + sig_term2.sum(-1)  # this is classif problem
 
@@ -266,27 +228,15 @@ class SigmaN(nn.Module):
 
     def forward(self, H):
         sig_term1 = H**self.p
-        print(f"sig term 1 shape {sig_term1.shape} and val {sig_term1}")
+        print(f"sig term 1 shape {sig_term1.shape}")
         sig_term2 = self.alpha * H
-        print(f"sig term 2 shape {sig_term2.shape} and val {sig_term2}")
+        print(f"sig term 2 shape {sig_term2.shape}")
         # without sum [5, 10] which is (B, D)
         return sig_term1 + sig_term2  # this is classif problem
 
 
 sigmaN = SigmaN(alpha, p)
-# sigma = Sigma(alpha, p)
-# print(sigma)
 sigma_Q = math.log(math.log(d))
-
-# init
-# multiva norm with some small mean
-# Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
-# v_0 = torch.randn(w.shape) * 0.001
-
-# make these learn
-# Q = torch.nn.Parameter(Q_0)
-
-# v = torch.nn.Parameter(v_0)
 
 
 class Attention(nn.Module):
@@ -297,7 +247,7 @@ class Attention(nn.Module):
         self.sm = nn.Softmax(dim=-1)
 
     def forward(self, X):
-        print(f"X shape {X.shape}")  # [5, 10, 100]
+        # print(f"X shape {X.shape}")  # [5, 10, 100]
         Q = self.Q  # [10, 10]
         print(f"Q shape {Q.shape}")
         v = self.v  # d=100 shape
@@ -305,7 +255,43 @@ class Attention(nn.Module):
         print(f"attn shape {attn.shape}")
         v_X = X @ v
         print(f"v_X.shape {v_X.shape}")
-        return v_X.mm(attn.T)  # matmul of mxn and nxp
+        out = v_X.mm(attn.T)
+        print(f"out.shape {out.shape}")
+        return out
+
+
+# as in Def3.2Simplification3.1
+class Attention321(nn.Module):
+    def __init__(self, Q, v):
+        super(Attention321, self).__init__()
+        self.Q = Q
+        self.v = v
+        d = v.shape[-1]
+        D = v.shape[-2]
+        self.sm = nn.Softmax(dim=-1)
+        self.out_project = nn.Linear(D, d, bias=False)
+
+    def forward(self, X):
+        # print(f"X shape {X.shape}")  # (B, D, d)
+        Q = self.Q  # [10, 10]
+        print(f"Q shape {Q.shape}")
+        v = self.v  # d=100 shape
+        attn = self.sm(Q)  # DxD
+        print(f"attn shape {attn.shape}")  # DxD ok
+        # v_X = X @ v # (B, D)
+        # print(f"v_X.shape {v_X.shape}")
+        # out = v_X.mm(attn.T)
+
+        alternative = X @ v.T @ attn.T  # is B, D, d @ d, D @ D. D
+        print(f"alternative shape {alternative.shape}")
+        # print(f"out.shape {out.shape}") # B, D # like a regression task which is what this is without the final softmax
+
+        # but because in denoise task output must be same shape as input
+        # project one more time to get B,
+
+        # might freeze it
+        out = self.out_project(alternative)
+        return out
 
 
 class SpatialTransformer(nn.Module):
@@ -313,14 +299,14 @@ class SpatialTransformer(nn.Module):
         super(SpatialTransformer, self).__init__()
 
         Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
-        v_0 = torch.randn(d) * 0.001
+        v_0 = torch.randn(D, d) * 0.001
 
         Q = torch.nn.Parameter(Q_0)
-        v = torch.nn.Parameter(v_0)
+        v = torch.nn.Parameter(v_0)  # shape of w which is of dim d
 
         self.Q = Q
         self.v = v
-        self.attention = Attention(Q, v)
+        self.attention = Attention321(Q, v)
         self.sigma = SigmaN(alpha, p)
 
     def forward(self, X):
@@ -353,12 +339,12 @@ optimizer = torch.optim.SGD(net1.parameters(), lr=1e-1)  # this is not minibatch
 
 for i in range(epochs):
     partial = net1(X.to(device))
-    print(f"partial shape {partial.shape}")
+    print(f"net shape out{partial.shape}")
     # torch.Size([5, 10]);  5 is batch; D = 10 (B, D)
     # Y = sigmaN(partial)
     # print(f"now shape Y is {Y.shape}")
 
     # they do CE with y
     # and cosine of trained v with generated w
-    c = cosine(net1.v.data, w)
+    c = cosine(net1.v[-1].data, w)
     print(f"cosine similarity bet learned feature v and gen w {c}")

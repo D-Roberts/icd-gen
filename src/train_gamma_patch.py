@@ -99,8 +99,8 @@ def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     # output = model(xs, ys)
     print(f"xs in train step shape {xs.shape}")
-    if args.training["nn_model"]:
-        xs = torch.permute(xs, (0, 2, 1))
+    # if args.training["nn_model"]:
+    #     xs = torch.permute(xs, (0, 2, 1))
 
     output_full, attn_arg = model(xs)
     print(f"output_full {output_full.shape}")  # this is (B, D)
@@ -290,7 +290,7 @@ def train(model, args):
         for i, data in enumerate(train_loader, 0):
             inputs, targets = data
 
-            # For debug
+            # For debug ******************************
             if running_batch_counter == 3:
                 break
 
@@ -411,22 +411,22 @@ def train(model, args):
 
 
 def main(args):
-    # model = TransformerModelV2(
-    #     context_length=args.training["context_len"],
-    #     dim_input=args.training["dim_n"],
-    #     add_frozen_kernel=args.training["add_frozen_kernel"],
-    #     backbone="ViT",
-    # )
-    # sigma q theoretic is log log of d
-    d = 200  # I think with the fused as of right now
-    D = 10
-    model = SpatialTransformer(
-        alpha=0.03,
-        p=5,
-        sigma_Q=math.log(math.log(d // 2)),
-        D=D,
-        d=d,
+    model = TransformerModelV2(
+        context_length=args.training["context_len"],
+        dim_input=args.training["dim_n"],
+        add_frozen_kernel=args.training["add_frozen_kernel"],
+        backbone="ViT",
     )
+    # sigma q theoretic is log log of d
+    # d = 200  # I think with the fused as of right now
+    # D = 10
+    # model = SpatialTransformer(
+    #     alpha=0.03,
+    #     p=5,
+    #     sigma_Q=math.log(math.log(d // 2)),
+    #     D=D,
+    #     d=d,
+    # )
     print(model)
 
     model.to(device)

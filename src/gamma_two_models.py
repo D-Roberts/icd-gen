@@ -165,8 +165,9 @@ class TransformerModelV2(nn.Module):
 
         embedded = torch.permute(embedded, (0, 2, 1))
         # the rest of this expects shape unpermuted
-        W_KQ = self.W_KQ
+        W_KQ = self.W_KQ  # dmod, dmod
         W_PV = self.W_PV
+        print(f"recall shape of W_KQ {W_KQ.shape}")
 
         # patch seq == context len should be last dim
         # xs_skip_last = xs[:, :, :-1]
@@ -177,8 +178,10 @@ class TransformerModelV2(nn.Module):
 
         # now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
         attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ embedded / self.rho
+        print(f"recall shape of softm _arg {attn_arg.shape}")  # B, D-1, D
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
         f_attn = W_PV @ xs_skip_last @ softmax_attn_arg
+        print(f"recall shape of f_attn {f_attn.shape}")  # B, d_mod, D
 
         # print(f"shape of f_attn {f_attn.shape}")  # (batch, d_model, seqlen)
         # ([20, 32, 10]) including the query
@@ -222,12 +225,12 @@ class Attention(nn.Module):
         self.sm = nn.Softmax(dim=1)
 
     def forward(self, X):
-        print(f"X shape {X.shape}")  # [5, 10, 100]
+        print(f"X shape {X.shape}")  # [5, 10, 100] B, D, d
         Q = self.Q  # d d
         print(f"Q shape {Q.shape}")
         Wv = self.Wv  # B, d, D
         attn = self.sm(Q)
-        print(f"attn shape in attn layer {attn.shape}")
+        print(f"attn shape in attn layer {attn.shape}")  # d d
 
         # TODO@DR: The logic of this model in the -incontext context
         # must be changed / verified
@@ -237,7 +240,7 @@ class Attention(nn.Module):
         print(f"v_X shape {v_X.shape} in attn layer")
 
         out = v_X @ attn.T
-        return out  # matmul of mxn and nxp
+        return out
 
 
 class SpatialTransformer(nn.Module):
