@@ -14,9 +14,11 @@
         
                 - now that model learns, look into what is learning (back to simple for dev new step). 
                 
-                - Put a test eval psnr with t fixed. why is u going up after a time in training? What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
+                - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and exploding variance. 
+                
+                - What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
 
-                - put context back in.
+                - put context back in - with a fully new token from the same distrib (I have an improv right now)
 
 
     
@@ -32,7 +34,7 @@
         * Model 2 - is work in progress.
 
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
-        since need to project it from embed dim anyways. For pred and loss- slice out zeros.
+        since need to project it from embed dim anyways. For pred and loss- slice out zeros. [not sure yet how to best do this]
 
         * compare MAE with one other loss (no point in MSE). 
         
