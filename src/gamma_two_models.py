@@ -192,69 +192,74 @@ class TransformerModelV2(nn.Module):
         return torch.transpose(out_full, 2, 1), attn_arg
 
 
-#######################Jelassi style to learn spatial pos
-# simplified model
+#######################Jelassi style (modified for denoise rather than
+# classification task) to learn spatial pos
+
+# simplified model ViT Spatial Transformer with special Space Attention
 
 
-class Sigma(nn.Module):
+# # for denoise task
+class SigmaN(nn.Module):
     def __init__(self, alpha, p):
-        super(Sigma, self).__init__()
+        super(SigmaN, self).__init__()
         self.alpha = alpha
         self.p = p
 
     def forward(self, H):
-        # the spatial vit analysis is with the classifc label
-
-        # TODO@DR rederive what is with same shape lable / pixel level pred
-        # return (H ** self.p).sum(-1) + (self.alpha * H).sum(-1)
-        # this was a classification task
-        return (H**self.p) + (self.alpha * H)
-        # Still not right
+        sig_term1 = H**self.p
+        # print(f"sig term 1 shape {sig_term1.shape} and val {sig_term1}")
+        sig_term2 = self.alpha * H
+        # print(f"sig term 2 shape {sig_term2.shape} and val {sig_term2}")
+        # without sum [5, 10] which is (B, D)
+        return sig_term1 + sig_term2
 
 
 class Attention(nn.Module):
-    def __init__(self, Q, v):
+    def __init__(self, Q, Wv):
         super(Attention, self).__init__()
         self.Q = Q
-        self.v = v
-        self.sm = nn.Softmax(dim=-1)
+        self.Wv = Wv
+        self.sm = nn.Softmax(dim=1)
 
     def forward(self, X):
-        Q = self.Q
-        v = self.v
+        print(f"X shape {X.shape}")  # [5, 10, 100]
+        Q = self.Q  # d d
+        print(f"Q shape {Q.shape}")
+        Wv = self.Wv  # B, d, D
         attn = self.sm(Q)
-        v_X = X @ v
-        return v_X.mm(attn.T)
+        print(f"attn shape in attn layer {attn.shape}")
+
+        # TODO@DR: The logic of this model in the -incontext context
+        # must be changed / verified
+        v_X = torch.permute(X, (0, 2, 1)) @ Wv.T
+        print(f"torch.permute(X, (0, 2,1)) {torch.permute(X, (0, 2,1)).shape}")
+        print(f" Wv.T shape { Wv.T.shape}")
+        print(f"v_X shape {v_X.shape} in attn layer")
+
+        out = v_X @ attn.T
+        return out  # matmul of mxn and nxp
 
 
-alpha = 0.03
-p = 5
-sigma = Sigma(alpha, p)
-d = 100
-sigma_Q = math.log(math.log(d))
-D = 10
-Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
-N = 100
-# v needs to be shape of w
-v_0 = torch.randn((N, d)) * 0.001
+class SpatialTransformer(nn.Module):
+    def __init__(self, alpha, p, sigma_Q, D, d):  # d is d_model too here
+        super(SpatialTransformer, self).__init__()
 
-Q = torch.nn.Parameter(Q_0)
-v = torch.nn.Parameter(v_0)
+        # I think Q is A in paper
+        Q_0 = torch.eye(d) * sigma_Q + torch.randn(d, d) * 0.001
+        v_0 = torch.randn(d, D) * 0.001
 
+        Q = torch.nn.Parameter(Q_0)
+        Wv = torch.nn.Parameter(v_0)
 
-# TODO@DR: this is work in progress
-class TransformerSpatial(nn.Module):
-    def __init__(self, Q=Q, v=v, sigma=sigma):
-        super(TransformerSpatial, self).__init__()
         self.Q = Q
-        self.v = v
-        self.attention = Attention(Q, v)
-        self.sigma = sigma
+        self.Wv = Wv
+        self.attention = Attention(Q, Wv)
+        self.sigma = SigmaN(alpha, p)
 
     def forward(self, X):
+        # print(f"X shape in net {X.shape}, w shape {w.shape}, v shape {self.v.shape}")
         H = self.attention(X)
+        print(f"H shape in net {H.shape}")
         out = self.sigma(H)
-        # print("what is shape out of spatial Transformer and what " \
-        # "was input shape", X.shape, out.shape) # not right for now
-        print("what is shape out of H in simple spatial Transformer", H.shape)
-        return H
+        print(f"out shape in net {out.shape}")
+        return out, H

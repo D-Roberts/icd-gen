@@ -251,6 +251,8 @@ dataset = torch.load("group_data/dataset.to")
 y = torch.load("group_data/y.to")
 w = torch.load("group_data/w.to")
 partition = torch.load("group_data/partition.to")
+print(f"partition loaded now {partition}")
+print(f"shape of w {w.shape}")
 
 
 # dataset[:,-1] = 0.0

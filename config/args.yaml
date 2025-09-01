@@ -77,7 +77,9 @@ training:
     scheduler_kwargs:
         choice: cosine # cosine or None; works best
         warmup: 0 # num warmup steps for cosine scheduler
-    nn_model: TransformerModelV2 #one attn layer with softmax and now with optionally
+    nn_model: SpatialTransformer
+    
+            # TransformerModelV2 #one attn layer with softmax and now with optionally
             # frozen embeddings and frozen large backbone as projection kernel
     
     

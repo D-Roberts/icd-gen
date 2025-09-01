@@ -8,6 +8,7 @@ import argparse
 
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 
 import comet_ml
 from PIL import Image
@@ -18,7 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
 from dam_energies import *
-from gamma_two_models import TransformerModelV2, TransformerSpatial
+from gamma_two_models import TransformerModelV2, SpatialTransformer
 
 from groups_datagen import (
     x_train,
@@ -89,9 +90,6 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
     if not os.path.exists(core_dir):
         os.mkdir(core_dir)
 
-# Put in data_gen TODO@DR ADD New Ones; Ditch the Clustering
-DATASET_CASES = {0: "Linear"}
-
 
 def train_step(model, xs, ys, optimizer, loss_func):
     """the energy depends on some hyperparameters
@@ -100,8 +98,14 @@ def train_step(model, xs, ys, optimizer, loss_func):
     """
     optimizer.zero_grad()
     # output = model(xs, ys)
+    print(f"xs in train step shape {xs.shape}")
+    if args.training["nn_model"]:
+        xs = torch.permute(xs, (0, 2, 1))
+
     output_full, attn_arg = model(xs)
-    output = output_full[:, :, -1]
+    print(f"output_full {output_full.shape}")  # this is (B, D)
+
+    output = output_full[:, :, -1]  # query is last in seq
 
     X = output_full[:, :, :-1]  # all but the last token
     # print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
@@ -407,13 +411,22 @@ def train(model, args):
 
 
 def main(args):
-    model = TransformerModelV2(
-        context_length=args.training["context_len"],
-        dim_input=args.training["dim_n"],
-        add_frozen_kernel=args.training["add_frozen_kernel"],
-        backbone="ViT",
+    # model = TransformerModelV2(
+    #     context_length=args.training["context_len"],
+    #     dim_input=args.training["dim_n"],
+    #     add_frozen_kernel=args.training["add_frozen_kernel"],
+    #     backbone="ViT",
+    # )
+    # sigma q theoretic is log log of d
+    d = 200  # I think with the fused as of right now
+    D = 10
+    model = SpatialTransformer(
+        alpha=0.03,
+        p=5,
+        sigma_Q=math.log(math.log(d // 2)),
+        D=D,
+        d=d,
     )
-    # model = TransformerSpatial()
     print(model)
 
     model.to(device)
