@@ -63,7 +63,7 @@ training:
     freeze_projections: False #in the simple transformer models - 
                                 # to make it even simpler for analysis
     
-    batch_size: 4
+    batch_size: 64
     learning_rate: 0.01
 
     period_save_weights: 4
@@ -71,7 +71,7 @@ training:
 
     loss: MAE # MSE or MAE right now for Lens1. Add one more as gamma has no business with MSE.
 
-    epochs: 1
+    epochs: 3
     optimizer_choice: adamw 
     wd: 0.0 # weight decay in adamw; add some since vit likes either this or sgd with mom
     scheduler_kwargs:

@@ -29,9 +29,10 @@
         Comet for patch-group-gamma-denoise-in-context:
         https://www.comet.com/ai-daor/gamma-patch/view/new/panels
 
-        * Rethink how the groups and group indeces are generated.
+        * Rethink how to input the context
 
-        * Model 2 - is work in progress.
+        * Model 2 - spatialtransformer - added but learning with the denoise task
+        with context is WIP.
 
         *reconsider if to pad target to 2*patch dim to match fused seq or to dim
         since need to project it from embed dim anyways. For pred and loss- slice out zeros. [not sure yet how to best do this]

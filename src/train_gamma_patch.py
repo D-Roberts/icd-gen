@@ -97,13 +97,13 @@ def train_step(model, xs, ys, optimizer, loss_func):
 
     """
     optimizer.zero_grad()
-    # output = model(xs, ys)
-    print(f"xs in train step shape {xs.shape}")
-    # if args.training["nn_model"]:
-    #     xs = torch.permute(xs, (0, 2, 1))
+
+    # print(f"xs in train step shape {xs.shape}")
+    if args.training["nn_model"] == "TransformerModelV2":
+        xs = torch.permute(xs, (0, 2, 1))
 
     output_full, attn_arg = model(xs)
-    print(f"output_full {output_full.shape}")  # this is (B, D)
+    # print(f"output_full {output_full.shape}")  # this is (B, D, d)
 
     output = output_full[:, :, -1]  # query is last in seq
 
@@ -231,8 +231,9 @@ def train(model, args):
 
     # see how many to train
     c1 = 0
-    for param in model.parameters():
+    for name, param in model.named_parameters():
         if param.requires_grad:
+            print(f"name param with grad {name}")
             c1 += 1
     print(f"how many params require grad {c1}")
 
@@ -291,8 +292,10 @@ def train(model, args):
             inputs, targets = data
 
             # For debug ******************************
-            if running_batch_counter == 3:
-                break
+            # if running_batch_counter == 3:
+            #     break
+
+            print(running_batch_counter)
 
             loss, output, output_full, attn_arg = train_step(
                 model,
@@ -301,6 +304,7 @@ def train(model, args):
                 optimizer,
                 loss_func,
             )
+            print(loss)
 
             curve_y_losstrain_batch.append(loss)
             running_loss_epoch += curve_y_losstrain_batch[-1]
@@ -411,22 +415,24 @@ def train(model, args):
 
 
 def main(args):
-    model = TransformerModelV2(
-        context_length=args.training["context_len"],
-        dim_input=args.training["dim_n"],
-        add_frozen_kernel=args.training["add_frozen_kernel"],
-        backbone="ViT",
-    )
-    # sigma q theoretic is log log of d
-    # d = 200  # I think with the fused as of right now
-    # D = 10
-    # model = SpatialTransformer(
-    #     alpha=0.03,
-    #     p=5,
-    #     sigma_Q=math.log(math.log(d // 2)),
-    #     D=D,
-    #     d=d,
-    # )
+    if args.training["nn_model"] == "TransformerModelV2":
+        model = TransformerModelV2(
+            context_length=args.training["context_len"],
+            dim_input=args.training["dim_n"],
+            add_frozen_kernel=args.training["add_frozen_kernel"],
+            backbone="ViT",
+        )
+    else:  # two models here
+        # sigma q theoretic is log log of d
+        d = 200  # I think with the fused as of right now
+        D = 10
+        model = SpatialTransformer(
+            alpha=0.03,
+            p=5,
+            sigma_Q=math.log(math.log(d // 2)),
+            D=D,
+            d=d,
+        )
     print(model)
 
     model.to(device)
@@ -445,65 +451,65 @@ def main(args):
 
     print(f"what did train on {x_train.shape}")
 
-    learned_W_KQ = net.W_KQ.detach().cpu().numpy()
-    learned_W_PV = net.W_PV.detach().cpu().numpy()
+    # learned_W_KQ = net.W_KQ.detach().cpu().numpy()
+    # learned_W_PV = net.W_PV.detach().cpu().numpy()
 
-    # TODO@DR: Also visualize grads and activations for full understanding
-    learned_W_KQ_grad = net.W_KQ.grad.detach().cpu().numpy()
-    learned_W_PV_grad = net.W_PV.grad.detach().cpu().numpy()
+    # # TODO@DR: Also visualize grads and activations for full understanding
+    # learned_W_KQ_grad = net.W_KQ.grad.detach().cpu().numpy()
+    # learned_W_PV_grad = net.W_PV.grad.detach().cpu().numpy()
 
-    # Q, R, perm = la.qr(learned_W_KQ, pivoting=True)
-    # print(f"What is R for learned_W_KQ rank-reveal decomp: {R}")
-    # # TODO@DR: Do some rank analysis
+    # # Q, R, perm = la.qr(learned_W_KQ, pivoting=True)
+    # # print(f"What is R for learned_W_KQ rank-reveal decomp: {R}")
+    # # # TODO@DR: Do some rank analysis
 
-    rank_wkq = np.linalg.matrix_rank(learned_W_KQ)
-    print(f"rank of learned_W_KQ is {rank_wkq}")  # 16
-    rank_wpv = np.linalg.matrix_rank(learned_W_PV)
-    print(f"rank of learned_W_PV is {rank_wpv}")  # 16
+    # rank_wkq = np.linalg.matrix_rank(learned_W_KQ)
+    # print(f"rank of learned_W_KQ is {rank_wkq}")  # 16
+    # rank_wpv = np.linalg.matrix_rank(learned_W_PV)
+    # print(f"rank of learned_W_PV is {rank_wpv}")  # 16
 
-    rank_wkq = np.linalg.matrix_rank(learned_W_KQ_grad)
-    print(f"rank of learned_W_KQ grad last is {rank_wkq}")  # 4
-    rank_wpv = np.linalg.matrix_rank(learned_W_PV_grad)
-    print(f"rank of learned_W_PV grad last is {rank_wpv}")  # 4
-    # TODO@DR - is there something about the rank of the grad mat
-    # at the local optimums?
+    # rank_wkq = np.linalg.matrix_rank(learned_W_KQ_grad)
+    # print(f"rank of learned_W_KQ grad last is {rank_wkq}")  # 4
+    # rank_wpv = np.linalg.matrix_rank(learned_W_PV_grad)
+    # print(f"rank of learned_W_PV grad last is {rank_wpv}")  # 4
+    # # TODO@DR - is there something about the rank of the grad mat
+    # # at the local optimums?
 
-    img_path = vis_weights_kq_pv(
-        learned_W_KQ,
-        learned_W_PV,
-        titlemod=r"$\theta$ final",
-        dir_out=io_dict["dir_vis"],
-        fname="weights_final",
-        flag_show=args.training["flag_vis_weights"],
-    )
+    # img_path = vis_weights_kq_pv(
+    #     learned_W_KQ,
+    #     learned_W_PV,
+    #     titlemod=r"$\theta$ final",
+    #     dir_out=io_dict["dir_vis"],
+    #     fname="weights_final",
+    #     flag_show=args.training["flag_vis_weights"],
+    # )
 
-    img = Image.open(img_path)
+    # img = Image.open(img_path)
 
-    exp.log_image(
-        image_data=img,
-        name="attn_weigths.png",
-        image_format="png",
-        step=0,
-    )
+    # exp.log_image(
+    #     image_data=img,
+    #     name="attn_weigths.png",
+    #     image_format="png",
+    #     step=0,
+    # )
 
-    # plot grads
-    img_path = vis_weights_grad_kq_pv(
-        learned_W_KQ_grad,
-        learned_W_PV_grad,
-        titlemod=r"$\theta$ grad",
-        dir_out=io_dict["dir_vis"],
-        fname="weight_mats_grads",
-        flag_show=args.training["flag_vis_grad"],
-    )
+    # # plot grads
+    # img_path = vis_weights_grad_kq_pv(
+    #     learned_W_KQ_grad,
+    #     learned_W_PV_grad,
+    #     titlemod=r"$\theta$ grad",
+    #     dir_out=io_dict["dir_vis"],
+    #     fname="weight_mats_grads",
+    #     flag_show=args.training["flag_vis_grad"],
+    # )
 
-    img = Image.open(img_path)
+    # img = Image.open(img_path)
 
-    exp.log_image(
-        image_data=img,
-        name="attn_weigths_grads.png",
-        image_format="png",
-        step=0,
-    )
+    # exp.log_image(
+    #     image_data=img,
+    #     name="attn_weigths_grads.png",
+    #     image_format="png",
+    #     step=0,
+    # )
 
     # Log groups from structured datagen
     img = Image.open("groups_built_in_datagen.png")

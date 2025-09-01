@@ -63,7 +63,7 @@ class GroupSampler(DataSampler):
 
     def __init__(
         self,
-        N=100,  # small for dev
+        N=5000,  # small for dev
         D=10,
         d=None,
         L=None,
@@ -241,18 +241,18 @@ class GroupSampler(DataSampler):
 
 # Ad hoc testing
 dggen = GroupSampler()
-# dataset, y, w, partition = dggen.sample_xs()
+dataset, y, w, partition = dggen.sample_xs()
 # torch.save(dataset, 'group_data/dataset.to')
 # torch.save(y, 'group_data/y.to')
 # torch.save(w, 'group_data/w.to')
 # torch.save(partition, 'group_data/partition.to')
 
-dataset = torch.load("group_data/dataset.to")
-y = torch.load("group_data/y.to")
-w = torch.load("group_data/w.to")
-partition = torch.load("group_data/partition.to")
-print(f"partition loaded now {partition}")
-print(f"shape of w {w.shape}")
+# dataset = torch.load("group_data/dataset.to")
+# y = torch.load("group_data/y.to")
+# w = torch.load("group_data/w.to")
+# partition = torch.load("group_data/partition.to")
+# print(f"partition loaded now {partition}")
+# print(f"shape of w {w.shape}")
 
 
 # dataset[:,-1] = 0.0
@@ -367,39 +367,39 @@ class PreBatchedDataset(Dataset):
 # Train and test separatelly makes sense
 
 
-num_batches_train = 100  # when a real number of batches - this takes a while
-batch_size = 128
-num_batches_test = 50
-D = 10
+# num_batches_train = 100  # when a real number of batches - this takes a while
+# batch_size = 128
+# num_batches_test = 50
+# D = 10
 
 
-def get_batch_groups(num_batches, N=batch_size):
-    # TODO@DR this should have
-    # all parameters of generator;
-    train_set = []
+# def get_batch_groups(num_batches, N=batch_size):
+#     # TODO@DR this should have
+#     # all parameters of generator;
+#     train_set = []
 
-    for i in range(num_batches_train):
-        # different structure on each batch of 128 instances
-        dggen = GroupSampler(N=N, D=10)
-        dataset, y, w, partition = dggen.sample_xs()
+#     for i in range(num_batches_train):
+#         # different structure on each batch of 128 instances
+#         dggen = GroupSampler(N=N, D=10)
+#         dataset, y, w, partition = dggen.sample_xs()
 
-        # print(
-        #     "partition", partition
-        # )  # TODO@DR - double check if I want different groups and partitions
-        # and then if this code does this like I want
+#         # print(
+#         #     "partition", partition
+#         # )  # TODO@DR - double check if I want different groups and partitions
+#         # and then if this code does this like I want
 
-        # Each batch will have a different partition as plots show
-        # Effectively a different structure; can think of the batch
-        # as one image
+#         # Each batch will have a different partition as plots show
+#         # Effectively a different structure; can think of the batch
+#         # as one image
 
-        # plot_the_batch_partitions(i=i, D=10, partition=partition)
+#         # plot_the_batch_partitions(i=i, D=10, partition=partition)
 
-        _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
-        fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
-        X = torch.permute(fused_seq, (0, 2, 1))
-        train_set.append((X, label))
+#         _, noisy_d, _ = dggen.add_gamma_noise(dataset, y)
+#         fused_seq, label = dggen.get_fused_sequence(dataset, noisy_d)
+#         X = torch.permute(fused_seq, (0, 2, 1))
+#         train_set.append((X, label))
 
-    return train_set
+#     return train_set
 
 
 # train_batched_data = get_batch_groups(num_batches=num_batches_train, N=batch_size)

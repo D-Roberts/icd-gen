@@ -71,7 +71,7 @@ def partition(D, L):
 
 # Custom num of patches D and of groups L
 torch.manual_seed(0)
-D, L = 4, 2
+D, L = 10, 2
 S = partition(D, L)
 print(f"partition {S}")  # C=2; L = 5 # yes, random indeces in each group
 # of cardinality C = D/L
@@ -83,7 +83,7 @@ print(f"partition {S}")  # C=2; L = 5 # yes, random indeces in each group
 #
 
 N = 3  # num of records/instances
-d = 4  #
+d = 200  #
 
 # make feature and normalize
 w = torch.randn(d)

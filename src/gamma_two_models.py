@@ -142,17 +142,17 @@ class TransformerModelV2(nn.Module):
 
         permuted = torch.permute(xs, (0, 2, 1))
         patch_embed = self.embedpatch(permuted)
-        print(f"patch embed shape********* {patch_embed.shape}")
+        # print(f"patch embed shape********* {patch_embed.shape}")
 
         pos_embed = self.embedpos(
             patch_embed
         )  # [1, 10, 32] will add same order each batch
-        print(f"pos embed shape********* {pos_embed.shape}")
+        # print(f"pos embed shape********* {pos_embed.shape}")
 
         embedded = patch_embed + pos_embed
-        print(
-            f"after embeddings shape ........{embedded.shape}"
-        )  # they have (20, 10, 32)
+        # print(
+        #     f"after embeddings shape ........{embedded.shape}"
+        # )  # they have (20, 10, 32)
 
         # Choose to add a frozen pretrained backbone, as a kernel projector
 
@@ -167,7 +167,7 @@ class TransformerModelV2(nn.Module):
         # the rest of this expects shape unpermuted
         W_KQ = self.W_KQ  # dmod, dmod
         W_PV = self.W_PV
-        print(f"recall shape of W_KQ {W_KQ.shape}")
+        # print(f"recall shape of W_KQ {W_KQ.shape}")
 
         # patch seq == context len should be last dim
         # xs_skip_last = xs[:, :, :-1]
@@ -178,10 +178,10 @@ class TransformerModelV2(nn.Module):
 
         # now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
         attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ embedded / self.rho
-        print(f"recall shape of softm _arg {attn_arg.shape}")  # B, D-1, D
+        # print(f"recall shape of softm _arg {attn_arg.shape}")  # B, D-1, D
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
         f_attn = W_PV @ xs_skip_last @ softmax_attn_arg
-        print(f"recall shape of f_attn {f_attn.shape}")  # B, d_mod, D
+        # print(f"recall shape of f_attn {f_attn.shape}")  # B, d_mod, D
 
         # print(f"shape of f_attn {f_attn.shape}")  # (batch, d_model, seqlen)
         # ([20, 32, 10]) including the query
@@ -217,52 +217,61 @@ class SigmaN(nn.Module):
         return sig_term1 + sig_term2
 
 
-class Attention(nn.Module):
-    def __init__(self, Q, Wv):
-        super(Attention, self).__init__()
+# as in Def3.2Simplification3.1
+# as in Def3.2Simplification3.1
+class Attention321(nn.Module):
+    def __init__(self, Q, v):
+        super(Attention321, self).__init__()
         self.Q = Q
-        self.Wv = Wv
-        self.sm = nn.Softmax(dim=1)
+        self.v = v
+        d = v.shape[-1]
+        D = v.shape[-2]
+        self.sm = nn.Softmax(dim=-1)
+        self.out_project = nn.Linear(D, d, bias=False)
 
     def forward(self, X):
-        print(f"X shape {X.shape}")  # [5, 10, 100] B, D, d
-        Q = self.Q  # d d
-        print(f"Q shape {Q.shape}")
-        Wv = self.Wv  # B, d, D
-        attn = self.sm(Q)
-        print(f"attn shape in attn layer {attn.shape}")  # d d
+        # print(f"X shape {X.shape}")  # (B, D, d)
+        Q = self.Q  # [10, 10]
+        # print(f"Q shape {Q.shape}")
+        v = self.v  # d=100 shape
+        attn = self.sm(Q)  # DxD
+        # print(f"attn shape {attn.shape}")  # DxD ok
+        # v_X = X @ v # (B, D)
+        # print(f"v_X.shape {v_X.shape}")
+        # out = v_X.mm(attn.T)
 
-        # TODO@DR: The logic of this model in the -incontext context
-        # must be changed / verified
-        v_X = torch.permute(X, (0, 2, 1)) @ Wv.T
-        print(f"torch.permute(X, (0, 2,1)) {torch.permute(X, (0, 2,1)).shape}")
-        print(f" Wv.T shape { Wv.T.shape}")
-        print(f"v_X shape {v_X.shape} in attn layer")
+        # print(f"X {X.shape} and {v.T.shape} and {attn.T.shape}")
+        permuteX = torch.permute(X, (0, 2, 1))
+        alternative = permuteX @ v.T @ attn.T  # is B, D, d @ d, D @ D. D
+        # print(f"alternative shape {alternative.shape}")
+        # print(f"out.shape {out.shape}") # B, D # like a regression task which is what this is without the final softmax
 
-        out = v_X @ attn.T
+        # but because in denoise task output must be same shape as input
+        # project one more time to get B,
+
+        # might freeze it
+        out = self.out_project(alternative)
         return out
 
 
 class SpatialTransformer(nn.Module):
-    def __init__(self, alpha, p, sigma_Q, D, d):  # d is d_model too here
+    def __init__(self, alpha, p, sigma_Q, D, d):
         super(SpatialTransformer, self).__init__()
 
-        # I think Q is A in paper
-        Q_0 = torch.eye(d) * sigma_Q + torch.randn(d, d) * 0.001
-        v_0 = torch.randn(d, D) * 0.001
+        Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
+        v_0 = torch.randn(D, d) * 0.001
 
         Q = torch.nn.Parameter(Q_0)
-        Wv = torch.nn.Parameter(v_0)
+        v = torch.nn.Parameter(v_0)  # shape of w which is of dim d
 
         self.Q = Q
-        self.Wv = Wv
-        self.attention = Attention(Q, Wv)
+        self.v = v
+        self.attention = Attention321(Q, v)
         self.sigma = SigmaN(alpha, p)
 
     def forward(self, X):
         # print(f"X shape in net {X.shape}, w shape {w.shape}, v shape {self.v.shape}")
         H = self.attention(X)
-        print(f"H shape in net {H.shape}")
+        # print(f"shape of H {H.shape}")
         out = self.sigma(H)
-        print(f"out shape in net {out.shape}")
-        return out, H
+        return torch.transpose(out, 2, 1), H
