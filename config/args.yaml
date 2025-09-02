@@ -17,6 +17,12 @@ DATAGEN_GLOBALS:
         # parameters specific to the Linear case
         sigma2_pure_context: 2.0                  # controls radius of ball of pure of samples (default: 2.0)
         corr_scaling_matrix: None                 # x = Pz; y = A x  \tilde x = A (x + z); (normally identity I_n)
+        dim_n: 16
+        num_W_in_dataset: 1000
+        context_examples_per_W: 1
+        samples_per_context_example: 1
+        # skip_PCA_heuristic_slow: True
+        context_len: 500
         
     
     drift_noise_sigma_train_test_linear:  
@@ -69,15 +75,16 @@ training:
     period_save_weights: 4
     train_steps:
 
-    loss: MAE # MSE or MAE right now for Lens1. Add one more as gamma has no business with MSE.
+    loss: MSE # MSE or MAE right now for Lens1 grouped. Add one more as gamma has no business with MSE.
 
-    epochs: 3
+    epochs: 60
     optimizer_choice: adamw 
     wd: 0.0 # weight decay in adamw; add some since vit likes either this or sgd with mom
     scheduler_kwargs:
         choice: cosine # cosine or None; works best
         warmup: 0 # num warmup steps for cosine scheduler
-    nn_model: SpatialTransformer
+
+    nn_model: TransformerModelV1 # model depends if linear or grouped cases
     
             # TransformerModelV2 #one attn layer with softmax and now with optionally
             # frozen embeddings and frozen large backbone as projection kernel
@@ -95,8 +102,8 @@ training:
     nwork: 0
 
     # for  grouped patch spatial style
-    context_len: 10 #(default: 500) int, context length of input token sequence (X.shape[-1])
-    dim_n: 200 #(default: 32) int, ambient dimension; for fused patches is 200 now
+    context_len: 500 #(default: 500) int, context length of input token sequence (X.shape[-1])
+    dim_n: 16 #(default: 32) int, ambient dimension; for fused patches is 200 now
 
     linear: #for icml'25 icl denoise paper style
         num_W_in_dataset: 1000

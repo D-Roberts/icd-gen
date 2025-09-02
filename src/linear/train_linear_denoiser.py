@@ -17,34 +17,10 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
-from src.dam_energies import *
-from groups_datagen import (
-    x_train,
-    y_train,
-    x_test,
-    y_test,
-    PreBatchedDataset,
-    train_batched_data,
-    test_batched_data,
-)
-
-
-API_KEY = Path(".comet_api").read_text().strip()
-
-comet_ml.login()
-# comet_ml.init(api_key=API_KEY) #will deprecate
-workspace = Path(".comet_workspace").read_text().strip()
-
-exp = comet_ml.Experiment(
-    api_key=API_KEY,
-    project_name="icd-gen",
-    workspace=workspace,
-    auto_metric_logging=True,  # default
-)
 
 from transformers.optimization import get_cosine_schedule_with_warmup
 
-from src.baselines_linear import (
+from baselines_linear import (
     loss_if_predict_average,
     loss_if_predict_mostrecent,
     theory_linear_expected_error,  # TODO@DR: put this back
@@ -55,10 +31,24 @@ from data_util import (
     data_train_test_split_linear,
     DatasetWrapper,
 )
-from vis_utils import vis_weights_kq_pv, vis_loss, vis_weights_grad_kq_pv
+from utils.vis_utils import vis_weights_kq_pv, vis_loss, vis_weights_grad_kq_pv
 
-from models import *
-from util import run_subdir_setup
+from models_lens11 import *
+from utils.util import run_subdir_setup
+from utils.dam_energies import *
+
+
+API_KEY = Path(".comet_api").read_text().strip()
+
+comet_ml.login()
+workspace = Path(".comet_workspace").read_text().strip()
+
+exp = comet_ml.Experiment(
+    api_key=API_KEY,
+    project_name="linear_energy",
+    workspace=workspace,
+    auto_metric_logging=True,  # default
+)
 
 
 torch.backends.cudnn.benchmark = True
@@ -102,10 +92,13 @@ def train_step(model, xs, ys, optimizer, loss_func):
     """
     optimizer.zero_grad()
     # output = model(xs, ys)
+
     output_full, attn_arg = model(xs)
     output = output_full[:, :, -1]
 
-    X = output_full[:, :, :-1]  # all but the last token
+    # print(f"output {output.shape} ys {ys.shape} output_full {output_full} attn_arg {attn_arg}")
+
+    # X = output_full[:, :, :-1]  # all but the last token
     # print("in train step device of xs ys", xs.device, ys.device)  # yeah mps so ok
     loss = loss_func(output, ys)
 
@@ -145,7 +138,7 @@ def train(model, args):
     full_loss_sample_interval = args.training["full_loss_sample_interval"]
     batch_size = args.training["batch_size"]
 
-    data_suffix = "grouped"
+    data_suffix = "linear"
     opt_suffix = "adamw"
 
     model_fname = "%s_L%d_n%d_e%d_%s_%s" % (
@@ -187,45 +180,38 @@ def train(model, args):
     # Build or load data
     ################################################################################
 
-    # specify training and testing datasets
-    # Right now only for structured POC
-
     # just for save model
     # print(
     #     f"What dataset is wrapped for training********{x_train.shape} and label {y_train.shape}"
     # )
+    datagen_kwargs = args.DATAGEN_GLOBALS["linear"]
 
-    if not args.training["batch_level_partitions"]:
-        train_size = x_train.shape[0]
-        print("train_size", train_size)
-        train_dataset = DatasetWrapper(x_train, y_train)
-        test_dataset = DatasetWrapper(x_test, y_test)
+    (
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        train_data_subspaces,
+        test_data_subspaces,
+    ) = data_train_test_split_linear(**datagen_kwargs)
 
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=args.training["nwork"],
-        )
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=args.training["nwork"],
-        )
-    else:
-        # if groups at batch level - they get imported from group_datagen
-        train_set = PreBatchedDataset(train_batched_data)  # already batched
-        test_set = PreBatchedDataset(test_batched_data)
+    train_size = x_train.shape[0]
+    print("train_size", train_size)
+    train_dataset = DatasetWrapper(x_train, y_train)
+    test_dataset = DatasetWrapper(x_test, y_test)
 
-        train_size = len(train_batched_data)
-        train_loader = DataLoader(
-            train_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
-        )
-
-        test_loader = DataLoader(
-            test_set, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
-        )
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=args.training["nwork"],
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=args.training["nwork"],
+    )
 
     # Freeze the projection layers
     # model.embedpatch.projection.weight.requires_grad = False
@@ -302,6 +288,9 @@ def train(model, args):
 
             curve_y_losstrain_batch.append(loss)
             running_loss_epoch += curve_y_losstrain_batch[-1]
+            loss_train = report_dataset_loss(
+                model, loss_func, train_loader, "train", device
+            )
 
             # (interval=4 batches) periodic inspection of test error
             if (running_batch_counter + 1) % full_loss_sample_interval == 0:
@@ -315,7 +304,9 @@ def train(model, args):
                 )
 
             running_batch_counter += 1
-            exp.log_metrics({"batch train loss": loss}, step=running_batch_counter)
+            exp.log_metrics(
+                {"batch train loss": loss_train}, step=running_batch_counter
+            )
 
             # TODO@DR: Reason through energies later
 
@@ -330,30 +321,32 @@ def train(model, args):
 
         print("end epoch:", epoch, "====================")
 
-        # Plot last activations (full_output) and attn_arg from the model
-        print(
-            "shape output full last from last batch as well as attn",
-            output_full[-1, :, :].shape,
-            attn_arg[-1, :, :].shape,
-        )
+        # too many
+        if epoch == epochs - 1:
+            # Plot last activations (full_output) and attn_arg from the model
+            print(
+                "shape output full last from last batch as well as attn",
+                output_full[-1, :, :].shape,
+                attn_arg[-1, :, :].shape,
+            )
 
-        img_path = vis_weights_kq_pv(
-            output_full[-1, :, :].detach().cpu().numpy(),
-            attn_arg[-1, :, :].detach().cpu().numpy(),
-            titlemod=f"repres. final and intermed repres. last in epoch {epoch}",
-            dir_out=io_dict["dir_vis"],
-            fname="representations final per epoch",
-            flag_show=args.training["flag_vis_weights"],
-        )
+            img_path = vis_weights_kq_pv(
+                output_full[-1, :, :].detach().cpu().numpy(),
+                attn_arg[-1, :, :].detach().cpu().numpy(),
+                titlemod=f"repres. final and intermed repres. last in epoch {epoch}",
+                dir_out=io_dict["dir_vis"],
+                fname="representations final per epoch",
+                flag_show=args.training["flag_vis_weights"],
+            )
 
-        img = Image.open(img_path)
+            img = Image.open(img_path)
 
-        exp.log_image(
-            image_data=img,
-            name=f"attn_repres{epoch}.png",
-            image_format="png",
-            step=0,
-        )
+            exp.log_image(
+                image_data=img,
+                name=f"attn_repres{epoch}.png",
+                image_format="png",
+                step=0,
+            )
 
         ep_loss = running_loss_epoch / running_batch_counter
 
@@ -383,7 +376,7 @@ def train(model, args):
 
     report_dataset_loss(model, loss_func, train_loader, "train", device)
     report_dataset_loss(model, loss_func, test_loader, "test", device)
-    report_dataset_psnr(model, loss_func, test_loader, "test", device)
+    # report_dataset_psnr(model, loss_func, test_loader, "test", device)
 
     print("curve_x_losstrain_epochs_avg", curve_x_losstrain_epochs_avg)
     print("curve_y_losstrain_epochs_avg", curve_y_losstrain_epochs_avg, "\n")
@@ -405,11 +398,11 @@ def train(model, args):
 
 
 def main(args):
-    model = TransformerModelV2(
+    model = TransformerModelV1noresOmitLast(
         context_length=args.training["context_len"],
         dim_input=args.training["dim_n"],
-        add_frozen_kernel=True,
-        backbone="ViT",
+        # add_frozen_kernel=False,
+        # backbone="ViT",
     )
     print(model)
 
@@ -485,16 +478,6 @@ def main(args):
     exp.log_image(
         image_data=img,
         name="attn_weigths_grads.png",
-        image_format="png",
-        step=0,
-    )
-
-    # Log groups from structured datagen
-    img = Image.open("groups_built_in_datagen.png")
-
-    exp.log_image(
-        image_data=img,
-        name=f"groups_built_in_datagen.png",
         image_format="png",
         step=0,
     )

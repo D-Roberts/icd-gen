@@ -290,9 +290,9 @@ def data_train_test_split_util(
 
 
 def data_train_test_split_linear(
-    context_len=100,
-    dim_n=8,  # was 128
-    num_W_in_dataset=100,
+    context_len=500,
+    dim_n=32,  # was 128
+    num_W_in_dataset=1000,
     context_examples_per_W=1,
     samples_per_context_example=1,
     test_ratio=0.2,
@@ -465,6 +465,9 @@ def data_train_test_split_linear(
                 uniform=False,
             )
             corruption_kicks_for_sample = corruption_kicks[:, sample_idx]
+
+            # TODO@DR consider one here but don't have it now
+            corr_scaling_matrix = None
 
             # if non-isotropic covariance modification is used, we need to apply the scaling matrix
             if corr_scaling_matrix is not None:

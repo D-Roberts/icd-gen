@@ -79,7 +79,7 @@ class SpaceEmbedding(nn.Module):
         return self.se[:, : x.size(1)]
 
 
-class TransformerModelV2(nn.Module):
+class TransformerModelEmb(nn.Module):
     """
     Simplified attention only 1 layer and softmax;
 
@@ -269,9 +269,96 @@ class TransformerModel2H(nn.Module):
         return f_attn_comb[:, :, -1]  # only for last token so (B, dim)
 
 
+# as in icd
+class TransformerModelV1(nn.Module):
+    """
+    Simplest model:
+    - no positional encoding is used
+    - `linear self-attention` (no softmax wrapper used)
+
+    Notes
+     - dim_input - the dimension of input tokens
+     - dim_attn  - the dimension of the residual stream (attention head + MLP input and output)
+    """
+
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__()
+        assert n_layer == 1
+        assert n_head == 1
+        assert dim_attn is None
+
+        # attention matrices (need to split by head...)
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
+        self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
+        self.rho = context_length  # scaling used in Bartlett 2023
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        rho = n_tokens
+
+        attn_arg = torch.transpose(xs, 1, 2) @ W_KQ @ xs / rho
+        f_attn = xs + W_PV @ xs @ attn_arg
+
+        out = f_attn[
+            :, :, -1
+        ]  # take dim_n output result at last token, for all batches
+        return out
+
+
+# as in icd
+class TransformerModelV1noresOmitLast(TransformerModelV1):
+    """
+    See docstring TransformerModelV1 : TODO@DR these are just going to be two simple baselines -
+                                             keep only one copy of V1 and V2
+    """
+
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=1, n_head=1):
+        super().__init__(
+            context_length, dim_input, dim_attn=dim_attn, n_layer=n_layer, n_head=n_head
+        )
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+            - batchsz = batch size
+            - note the last two components match the math notation
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+        # print(f' xs.size() { xs.size()}')
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+        rho = n_tokens - 1
+        # print(f' W_KQ { W_KQ.shape}')
+        # print(f' W_PV { W_PV.shape}')
+
+        xs_skip_last = xs[:, :, :-1]
+        # print(f' xs_skip_last { xs_skip_last.shape}')
+
+        projection_estimate = xs_skip_last @ torch.transpose(xs_skip_last, 1, 2) / rho
+        # print(f' projection_estimate { projection_estimate.shape}')
+
+        f_attn_approx = W_PV @ projection_estimate @ W_KQ @ xs[:, :, [-1]]
+        # out = f_attn_approx[
+        #     :, :, -1
+        # ]  # take dim_n output result at last token, for all batches
+
+        # all
+        return f_attn_approx, projection_estimate
+
+
 MODEL_CLASS_FROM_STR = {
-    "TransformerModelV2": {"class": TransformerModelV2, "alias": "TV2"},
+    "TransformerModelEmb": {"class": TransformerModelEmb, "alias": "TV2"},
     "TransformerModel2H": {"class": TransformerModel2H, "alias": "T2H"},
+    "TransformerModelV1": {"class": TransformerModelV1noresOmitLast, "alias": "TV1"},
 }
 # define companion dict mapping alias to class string
 MODEL_CLASS_ALIAS_TO_STR = {v["alias"]: k for k, v in MODEL_CLASS_FROM_STR.items()}

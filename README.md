@@ -24,7 +24,7 @@
 
 
 
-    *0. Lens 1. Setting2. Code for models on the new patch structure datagen
+    *0. Lens 1. Setting2 [path associations with gamman noise multiplicative]. Code for models on the new patch structure datagen
 
         [WIP.]
 
@@ -32,26 +32,29 @@
         https://www.comet.com/ai-daor/gamma-patch/view/new/panels
 
         * Rethink how to input the context and prediction for denoise rather than
-        classification
+        classification in the pos association based spatial transformer
+
+        * likely add context embedding here as well not sure yet; 
 
         * Model 2 - spatialtransformer - added but learning with the denoise task
-        with context is 
+        with context is - not learning well yet.
 
         * reframe problem and input setup.
         * WIP
 
         
 
-    *1.Lens 1. Setting 1. factor in the noise drift code from my other repo 
-    *2. Lens 1. Setting 1.  there is a bug in the plot loss baselines code 
+    *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo 
+  
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
-    *4. Retrain the 2H.
+   
+    *5. Put in the 2lyaer and train it on drift train - test to see better generalization.
 
 
     Overall:
     *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix. 
-    
-    *8. Input normalizations accross the board.
+
+
 
 
 ### To train:
@@ -76,10 +79,17 @@ For linear datagen
 ```
 python src/train_denoiser.py --config config/args.yaml
 ```
+Comet at https://www.comet.com/ai-daor/linear-energy/view/new/panels
+
 For gamma noise and patch groups - spatial
 
 ```
 python src/train_gamma_patch.py --config config/args.yaml
+```
+
+For Enerdit:
+```
+python src/enerdit/dev/train_dev.py
 ```
 
 Clean up dirs with 
