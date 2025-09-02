@@ -14,7 +14,7 @@
         
                 - now that model learns, look into what is learning (back to simple for dev new step). 
                 
-                - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and exploding variance. 
+                - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and increasing variance. 
                 
                 - What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
 
@@ -31,7 +31,8 @@
         Comet for patch-group-gamma-denoise-in-context:
         https://www.comet.com/ai-daor/gamma-patch/view/new/panels
 
-        * Rethink how to input the context
+        * Rethink how to input the context and prediction for denoise rather than
+        classification
 
         * Model 2 - spatialtransformer - added but learning with the denoise task
         with context is 
@@ -44,7 +45,7 @@
     *1.Lens 1. Setting 1. factor in the noise drift code from my other repo 
     *2. Lens 1. Setting 1.  there is a bug in the plot loss baselines code 
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
-    #4. Lens 1. Setting 1. There might be a bug in the 2-attn heads repo.
+    *4. Retrain the 2H.
 
 
     Overall:
