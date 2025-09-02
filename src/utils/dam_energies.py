@@ -37,14 +37,15 @@ Torch implementations for energy.
 # TODO@DR: calculate in batch
 def energy(s, X, c_lambda, beta, c_k):
     """from m.smart paper not the hopfield"""
-    term1 = 0.5 * c_lambda * torch.norm(s, p=2, dim=-1) ** 2  # norm squared in energy
+    term1 = 0.5 * c_lambda * torch.norm(s, p=2) ** 2  # norm squared in energy
     scores = beta * c_k * (X.T @ s)
     # print(f"scores shape {scores.shape}") #4, 5, 4
 
-    lse = torch.logsumexp(scores, dim=0)
+    lse = torch.logsumexp(scores.squeeze(), dim=0)
     term2 = (1 / (beta * c_k)) * lse
     # torch has logsumexp
     # print(f"logsumexp(scores) {lse}")
+    # print(f"term1 hsape {term1}")
     return term1 - term2
 
 
