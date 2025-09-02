@@ -45,6 +45,8 @@
         
 
     *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo 
+
+    [WIP.]
   
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
    
@@ -52,7 +54,7 @@
 
 
     Overall:
-    *7. Refactor DAM energy and grad fn with torch not numpy. Also - debug, result should not be a matrix. 
+    *7. Put DAM energies.
 
 
 
