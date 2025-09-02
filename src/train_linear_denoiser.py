@@ -91,7 +91,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
     if not os.path.exists(core_dir):
         os.mkdir(core_dir)
 
-# Put in data_gen TODO@DR ADD New Ones; Ditch the Clustering
+
 DATASET_CASES = {0: "Linear"}
 
 

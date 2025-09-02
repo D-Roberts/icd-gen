@@ -1,6 +1,6 @@
-### WIP - codebase under development.
+### WIP - codebase and research under development (energy).
 
-### TODO@DR running list.
+###  Running TODO@DR list [one of them]. 
 
     *-1.  Enerdit dev: . 
         - WIP
@@ -26,18 +26,19 @@
 
     *0. Lens 1. Setting2. Code for models on the new patch structure datagen
 
+        [WIP.]
+
         Comet for patch-group-gamma-denoise-in-context:
         https://www.comet.com/ai-daor/gamma-patch/view/new/panels
 
         * Rethink how to input the context
 
         * Model 2 - spatialtransformer - added but learning with the denoise task
-        with context is WIP.
+        with context is 
 
-        *reconsider if to pad target to 2*patch dim to match fused seq or to dim
-        since need to project it from embed dim anyways. For pred and loss- slice out zeros. [not sure yet how to best do this]
+        * reframe problem and input setup.
+        * WIP
 
-        * compare MAE with one other loss (no point in MSE). 
         
 
     *1.Lens 1. Setting 1. factor in the noise drift code from my other repo 
