@@ -355,7 +355,77 @@ class TransformerModelV1noresOmitLast(TransformerModelV1):
         return f_attn_approx, projection_estimate
 
 
+class TransformerModel2L(nn.Module):
+    """
+    [DR] 2-layer Simplest model - mimicking the theory section:
+    - no positional encoding is used
+    - with softmax otw it would just be a linear layer with the matmul
+    and addition of the extra weight matrices
+
+    - tie weights as in theory
+
+    - no res connection or normalizations
+
+    - dim_input - the dimension of input tokens
+
+    TODO@DR: this is simplified and does not include EL as in theory.
+
+    """
+
+    def __init__(self, context_length, dim_input, dim_attn=None, n_layer=2, n_head=1):
+        super().__init__()
+
+        self.W_KQ = weight_matrix(dim_input, dim_input, mode="default")
+        self.W_PV = weight_matrix(dim_input, dim_input, mode="default")
+        self.rho = 1.0
+
+    def forward(self, xs):
+        """
+        xs is a sequence array of shape [batchsz, ndim, context_length]
+
+        """
+        batchsz, n_dim, n_tokens = xs.size()
+
+        W_KQ = self.W_KQ
+        W_PV = self.W_PV
+
+        # layer 1
+        # xs_skip = xs[:, :, :-1]
+        # s = xs[:, :, [-1]]
+        # #The skipping doesn't work on more than 1 layer / except at the last layer
+
+        # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
+        attn_arg = (
+            torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        )  # this should be now (499, 500)
+        # attn_arg = torch.transpose(xs_skip, 1, 2) @ W_KQ @ xs / self.rho
+        softmax_attn_arg = torch.softmax(attn_arg, dim=1)  # 499, 500
+
+        f_attn = W_PV @ xs @ softmax_attn_arg  # now this should be (16, 500)
+
+        # print("what was xs shape and what is f_attn shape if use xs_skip transp and xs", f_attn.shape)
+        # but for two layers I cannot use s only because what would f_attn_skip be for next layer.
+        # # # add another layer- no residual connection; no linear in between; use the same matrices
+
+        # # now skip for layer 2
+        # f_attn_skip = f_attn[:, :, :-1]
+
+        attn_arg1 = (
+            torch.transpose(f_attn, 1, 2) @ W_KQ @ f_attn / self.rho
+        )  # keep full f_attn second to get last token
+        softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
+
+        f_attn1 = W_PV @ f_attn @ softmax_attn_arg1
+        # print("what is the shape of skip version
+        # f_attn1 (but full second f_attn)", f_attn1.shape)
+        # #[80, 16, 500] - carve out last token
+
+        # out = f_attn1[:, :, -1]
+        return f_attn1, f_attn
+
+
 MODEL_CLASS_FROM_STR = {
+    "TransformerModel2L": {"class": TransformerModel2L, "alias": "T2L"},
     "TransformerModelEmb": {"class": TransformerModelEmb, "alias": "TV2"},
     "TransformerModel2H": {"class": TransformerModel2H, "alias": "T2H"},
     "TransformerModelV1": {"class": TransformerModelV1noresOmitLast, "alias": "TV1"},

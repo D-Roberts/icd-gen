@@ -398,7 +398,7 @@ def train(model, args):
 
 
 def main(args):
-    model = TransformerModelV1noresOmitLast(
+    model = TransformerModel2L(
         context_length=args.training["context_len"],
         dim_input=args.training["dim_n"],
         # add_frozen_kernel=False,
