@@ -105,7 +105,7 @@ Clean up dirs with
 
 
 Start Comet tracking (Comet is like wandb; used in industry):
-https://www.comet.com/ai-daor/icd-gen/view/new/panels
+
 
 * Track losses and save artifacts results outputs params plots and images per experiment. Clean code and to train properly when I move to more real models and not just toy.
 
