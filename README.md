@@ -1,6 +1,6 @@
 ### WIP - codebase and research under development (energy).
 
-###  Running TODO@DR list [one of them]. 
+###  Running TODO@DR list [one of the lists]. 
 
     *-1.  Enerdit dev: . 
         - WIP
@@ -17,6 +17,8 @@
                 - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and increasing variance. 
                 
                 - What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
+
+                - can I make an "exploding energy" argument a thing.
 
                 - put context back in - with a fully new token from the same distrib (I have an improv right now)
 
@@ -37,24 +39,26 @@
         * likely add context embedding here as well not sure yet; 
 
         * Model 2 - spatialtransformer - added but learning with the denoise task
-        with context is - not learning well yet.
+        with context is - not learning well yet. Debug.
 
         * reframe problem and input setup.
+
+        * get the DAM energy
         * WIP
 
         
 
-    *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo 
+    *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo where 1 layer doesn't do. I think put back the softmax and not the linear since the 2 layer is with softmax.
 
     [WIP.]
   
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
    
-    *5. Put in the 2lyaer and train it on drift train - test to see better generalization.
+    *5. Put in the 2lyaer and train it on drift train - test to see if better generalization than 1 layer.
 
 
     Overall:
-    *7. Put DAM energies.
+    *7. Put DAM energies across the board.
 
 
 
