@@ -8,13 +8,13 @@
 
         - Dev step-by-step:
            
-            - 2. Dev new loss / dgen / model setup to enable learning.
+            - 2. Dev new loss / dgen / model setup:
             
                 - WIP 
         
                 - now that model learns, look into what is learning (back to simple for dev new step). 
                 
-                - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and increasing variance. 
+                - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and increasing variance. Is this similar to the next token prediction snowballing error effect by the nature of the problem setup?
                 
                 - What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
 
