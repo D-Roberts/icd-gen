@@ -15,6 +15,8 @@
                 - now that model learns, look into what is learning (back to simple for dev new step). 
                 
                 - Put a test eval psnr with t fixed. why is U going up after a time in training? Looks like a brownian motion with non-zero drift and increasing variance. Is this similar to the next token prediction snowballing error effect by the nature of the problem setup?
+
+                - try to see negative conditional energy by employing the normal approx argument in gao, poole, kingma paper in iclr21.
                 
                 - What is the model's correct prediction to compare to clean for denoise quality if we are predicting energy (well, space and time scores but so that we get energy). What normalization can I add? Clamping of preds?
 
