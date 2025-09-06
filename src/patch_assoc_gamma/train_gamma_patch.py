@@ -18,7 +18,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import yaml
 import scipy.linalg as la
-from dam_energies import *
+
+# from dam_energies import *
 from gamma_two_models import TransformerModelV2, SpatialTransformer
 
 from groups_datagen import (

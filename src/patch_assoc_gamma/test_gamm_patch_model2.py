@@ -330,19 +330,46 @@ def cosine(a, b):
     return (torch.dot(a, b)) / torch.sqrt(torch.dot(a, a) * torch.dot(b, b))
 
 
+Q_0 = torch.eye(D) * sigma_Q + torch.randn(D, D) * 0.001
+v_0 = torch.randn(D, d) * 0.001
+
+Q = torch.nn.Parameter(Q_0)
+v = torch.nn.Parameter(v_0)  # shape of w which is of dim d
+
+Q = Q.to(device)
+v = v.to(device)
+
 # page 6
 net1 = SpatialTransformer(alpha=0.03, p=5, sigma_Q=sigma_Q, D=D, d=d).to(device)
-epochs = 1
+epochs = 2
 optimizer = torch.optim.SGD(net1.parameters(), lr=1e-1)  # this is not minibatch level
 # is full batch GD
 
+loss = nn.MSELoss()
+print(y.shape)
 
+print("what should be params to learn")
+for name, param in net1.named_parameters():
+    if param.requires_grad:
+        print(name)
+net = Attention321(Q, v)
+
+net.to(device)
 for i in range(epochs):
-    partial = net1(X.to(device))
-    print(f"net shape out{partial.shape}")
+    partial = net(X.to(device))
+    # print(f"net shape out{partial.shape}")
     # torch.Size([5, 10]);  5 is batch; D = 10 (B, D)
-    # Y = sigmaN(partial)
+    Y = sigmaN(partial)
     # print(f"now shape Y is {Y.shape}")
+
+    # test with last token from X since I don't have the label here
+    label = X[:, -2, :].to(device)  # just test with last patch
+    # print(f"label shape {label.shape}")  # torch.Size([5, 100])
+    l = loss(Y[:, -1, :], label)
+    print(f"loss at epoch {i} is {l}")
+    optimizer.zero_grad()
+    l.backward()
+    optimizer.step()
 
     # they do CE with y
     # and cosine of trained v with generated w
