@@ -85,7 +85,7 @@ conda activate icd-gen
 
 For linear datagen
 ```
-python src/train_denoiser.py --config config/args.yaml
+python src/linear/train_linear_denoiser.py --config config/args.yaml
 ```
 Comet at https://www.comet.com/ai-daor/linear-energy/view/new/panels
 

@@ -390,32 +390,32 @@ class TransformerModel2L(nn.Module):
         W_PV = self.W_PV
 
         # layer 1
-        # xs_skip = xs[:, :, :-1]
+        xs_skip = xs[:, :, :-1]
         # s = xs[:, :, [-1]]
-        # #The skipping doesn't work on more than 1 layer / except at the last layer
 
         # new line: now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
-        attn_arg = (
-            torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
-        )  # this should be now (499, 500)
-        # attn_arg = torch.transpose(xs_skip, 1, 2) @ W_KQ @ xs / self.rho
+        # attn_arg = (
+        #     torch.transpose(xs, 1, 2) @ W_KQ @ xs / self.rho
+        # )  # this should be now (499, 500)
+
+        attn_arg = torch.transpose(xs_skip, 1, 2) @ W_KQ @ xs / self.rho
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)  # 499, 500
 
-        f_attn = W_PV @ xs @ softmax_attn_arg  # now this should be (16, 500)
+        f_attn = W_PV @ xs_skip @ softmax_attn_arg  # now this should be (16, 500)
 
         # print("what was xs shape and what is f_attn shape if use xs_skip transp and xs", f_attn.shape)
         # but for two layers I cannot use s only because what would f_attn_skip be for next layer.
         # # # add another layer- no residual connection; no linear in between; use the same matrices
 
         # # now skip for layer 2
-        # f_attn_skip = f_attn[:, :, :-1]
+        f_attn_skip = f_attn[:, :, :-1]
 
         attn_arg1 = (
-            torch.transpose(f_attn, 1, 2) @ W_KQ @ f_attn / self.rho
+            torch.transpose(f_attn_skip, 1, 2) @ W_KQ @ f_attn / self.rho
         )  # keep full f_attn second to get last token
         softmax_attn_arg1 = torch.softmax(attn_arg1, dim=1)
 
-        f_attn1 = W_PV @ f_attn @ softmax_attn_arg1
+        f_attn1 = W_PV @ f_attn_skip @ softmax_attn_arg1
         # print("what is the shape of skip version
         # f_attn1 (but full second f_attn)", f_attn1.shape)
         # #[80, 16, 500] - carve out last token
