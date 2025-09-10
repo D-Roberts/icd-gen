@@ -45,7 +45,7 @@
 
         * reframe problem and input setup.
 
-        * get the DAM energy
+        * get the associative memories energy
         * WIP
 
         
@@ -56,11 +56,12 @@
   
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
    
-    *5. Put in the 2lyaer and train it on drift train - test to see if better generalization than 1 layer.
+    *5. Put in the 2lyaer and train it on drift train - test to see if better generalization than 1 layer. neah this won't work, too hard of a problem. Generate a 3-way interaction data gen example which is pointed to in the birth of transf as a case where need two layer and one will not do.
+
 
 
     Overall:
-    *7. Put DAM energies across the board.
+    *7. Put DAM energies across the board (pun intended).
 
 
 
