@@ -54,12 +54,14 @@
 
     *2. Param sharing - gradient accumulation- check if my shared weights code for backprop in the 2 layers is working correctly or I am losing grads. Do I have something similar anywhere else?
 
+
     [WIP.]
   
     *3. Lens 1. Setting 1. there might be a bug in the batch loss calculation and/or plotting 
    
     *5. Put in the 2lyaer and train it on drift train - test to see if better generalization than 1 layer. neah this won't work, too hard of a problem. Generate a 3-way interaction data gen example which is pointed to in the birth of transf as a case where need two layer and one will not do.
 
+    *6. Reconsider what vis I am looking at for analysis: what representations and/or weights and/or grads.
 
 
     Overall:
