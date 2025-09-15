@@ -50,7 +50,9 @@
 
         
 
-    *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo where 1 layer doesn't do. I think put back the softmax and not the linear since the 2 layer is with softmax.
+    *1. Lens 1. Setting 1. [linear manifold seq] factor in the noise drift code from my other repo where 1 layer doesn't do. I think put back the softmax and not the linear since the 2 layer is with softmax. [TODO: SOMEthing else]
+
+    *2. Param sharing - gradient accumulation- check if my shared weights code for backprop in the 2 layers is working correctly or I am losing grads. Do I have something similar anywhere else?
 
     [WIP.]
   
