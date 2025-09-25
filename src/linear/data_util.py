@@ -161,7 +161,7 @@ def report_dataset_psnr(
                     channel_axis=-1,
                     preserve_range=False,
                 )
-                # noisy query is in samples last; in fused patch first come dirty then comes clean
+                # noisy query is in samples last; in fused patch first come corrupted then comes clean
 
                 # TODO@DR: some normalizations for img specific val ranges
 

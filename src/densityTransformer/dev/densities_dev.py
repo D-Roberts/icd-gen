@@ -112,7 +112,7 @@ class TimeEmbedding(nn.Module):
     as of right now I have same t accross the sequence
     I embed it with this
     I tile it for seq len - identical for each sequence token
-    I concat on the embedding dimension to the x input in enerdit block
+    I concat on the embedding dimension to the x input in DensityTranformer block
 
     The t will be distinct for each instance in the batch
     """
@@ -162,18 +162,18 @@ class TimeEmbedding(nn.Module):
 
 
 """
-EnerdiT archi and buildinblocks.
+DensityTranformer archi and buildinblocks.
 
 Running low on time.
 
 """
 
 
-class EnerdiTFinal(nn.Module):
+class DensityTranformerFinal(nn.Module):
     def __init__(
         self,
     ):
-        super(EnerdiTFinal, self).__init__()
+        super(DensityTranformerFinal, self).__init__()
 
     def forward(self, sh, th, noisy):
         """
@@ -350,7 +350,7 @@ class SpaceHead(nn.Module):
         return x
 
 
-class EnerdiTBlock(nn.Module):
+class DensityTranformerBlock(nn.Module):
     """
     no layernorm or adaptvie ones for now.
     dyt
@@ -394,7 +394,7 @@ class EnerdiTBlock(nn.Module):
 
 
 # Taking inspiration from https://github.com/facebookresearch/DiT/blob/main/models.py
-class EnerdiT(nn.Module):
+class DensityTranformer(nn.Module):
     """
     assume at this point that the patches are cut up and fused already if for in-context.
     in simple - timm patching used.
@@ -411,7 +411,7 @@ class EnerdiT(nn.Module):
         patch_dim=2,
         context_len=None,
     ):
-        super(EnerdiT, self).__init__()
+        super(DensityTranformer, self).__init__()
 
         # 1 is for input channesl which is grayscale 1; patch_dim is one dim
         # so area is p*p; input_dim is likewise h
@@ -446,17 +446,17 @@ class EnerdiT(nn.Module):
         ######################################Before this - inputs embedding
         # context len now is number of patches from Patch making ViT style
 
-        # then comes the list of N EnerdiT blocks
+        # then comes the list of N DensityTranformer blocks
         self.blocks = nn.ModuleList(
             [
-                EnerdiTBlock(d_model, self.context_len, num_heads, mlp_ratio)
+                DensityTranformerBlock(d_model, self.context_len, num_heads, mlp_ratio)
                 for _ in range(depth)
             ]
         )
 
         # # correction factor space time scores
 
-        self.final_enerdit_layer = EnerdiTFinal()
+        self.final_DensityTranformer_layer = DensityTranformerFinal()
 
         # self.prehead_linear = PreHead(self.context_len, d_model,)
 
@@ -514,7 +514,7 @@ class EnerdiT(nn.Module):
 
     def forward(self, x, noisy_context, clean_context, t, device):
         """x is the noisy query"""
-        # print("what shape comes the batch into Enerdit ", x.shape)
+        # print("what shape comes the batch into DensityTranformer ", x.shape)
         # b_s, in_d, context_len = x.shape
         b_s, in_d = x.shape  # for simple only b and d dim
 
@@ -546,7 +546,7 @@ class EnerdiT(nn.Module):
         x = x.squeeze()
 
         # Tile identical t embeddings for each context token.
-        # Right now they get concat to the input of each enerdit block
+        # Right now they get concat to the input of each DensityTranformer block
 
         time_embed = time_embed.unsqueeze(1)
         # time_embed = torch.tile(time_embed, (1, 256, 1)) # on simple
@@ -576,7 +576,7 @@ class EnerdiT(nn.Module):
 
         ##################Input embedding area over
 
-        # add enerdit blocks
+        # add DensityTranformer blocks
         for block in self.blocks:
             x = block(x, time_embed, time_embed1, embedded_context)
 
@@ -602,14 +602,14 @@ class EnerdiT(nn.Module):
         # y is the noised in theory but here is called x, the noised query and context tokens
 
         # Energy is not fed unless used as regularizer
-        energy = self.final_enerdit_layer(space_score, time_score, x_for_U)
+        energy = self.final_DensityTranformer_layer(space_score, time_score, x_for_U)
 
         return energy, space_score, time_score
 
 
 # AdHoc testing
 # X_train = torch.randn(4, 100, 3, 5, requires_grad=True)  # (B, ,C, context_len)
-# model = EnerdiT()
+# model = DensityTranformer()
 # energy = model(X_train)
 # energy.retain_grad()
 

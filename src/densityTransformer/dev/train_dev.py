@@ -25,7 +25,7 @@ from dgen_for_gaussian import (
     get_batch_samples_w_context,
 )
 
-from EnerdiT_dev import *
+from src.enerdit.dev.densities_dev import *
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -74,7 +74,7 @@ for core_dir in [DIR_OUT, DIR_DATA, DIR_MODELS, DIR_RUNS]:
 
 torch.manual_seed(0)
 
-model = EnerdiT(
+model = DensityTranformer(
     d_model=256,  # 512
     input_dim=1024,  # the way datagen is setup now - comes in one flattened, including in simple
     cf1_init_value=0.5,
@@ -304,7 +304,7 @@ spacetimeloss_dev = SpaceTimeLoss()
 
 class Trainer:
     """
-    To dev the EnerdiT.
+    To dev the DensityTranformer.
     """
 
     def __init__(
@@ -427,7 +427,7 @@ def eval_test(model, criterion, dataloader, device):
 
 ##############Dev train on simple one structure small dataset
 epochs = 1  # do a total of around 60; takes around 4hrs
-# on mps with Enerdit 1 block 1 head with d_mod = 512
+# on mps with DensityTranformer 1 block 1 head with d_mod = 512
 train_size = len(train_loader)
 
 scheduler = get_cosine_schedule_with_warmup(optimizer, 0, epochs * train_size)

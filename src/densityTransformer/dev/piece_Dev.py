@@ -138,7 +138,7 @@ x = dyt(total_embed)
 print(f"in shape {total_embed.shape} and out shape {x.shape}")
 
 
-class TimeEmbedding(nn.Module):
+class TimeEncoding(nn.Module):
     """We just have to have them.
 
     logt will be drawn from a U(logtmin, logtmax), will tmin = 10**-9 and tmax = 10**3
@@ -157,7 +157,7 @@ class TimeEmbedding(nn.Module):
         self, d_model, frequency_embedding_size=256, mint=10 ** (-9), maxt=10**3
     ):
         super().__init__()
-        self.time_embedder = nn.Sequential(
+        self.time_encodeder = nn.Sequential(
             nn.Linear(frequency_embedding_size, d_model, bias=True),
             nn.SiLU(),
             nn.Linear(d_model, d_model, bias=True),
@@ -167,7 +167,7 @@ class TimeEmbedding(nn.Module):
         self.maxt = maxt
 
     @staticmethod
-    def time_embedding(t, dim, mint, maxt):
+    def time_encodeding(t, dim, mint, maxt):
         half = dim // 2
         freqs = torch.exp(
             -math.log(maxt - mint)
@@ -184,17 +184,17 @@ class TimeEmbedding(nn.Module):
         return embedding  # this will be shape (len of t, 256)
 
     def forward(self, t):
-        t_freq = self.time_embedding(
+        t_freq = self.time_encodeding(
             t, self.frequency_embedding_size, self.mint, self.maxt
         )
-        time_embed = self.time_embedder(t_freq)
-        return time_embed
+        time_encode = self.time_encodeder(t_freq)
+        return time_encode
 
 
-tembed = TimeEmbedding(32, 256, 10 ** (-9), 10**3)
+tembed = TimeEncoding(32, 256, 10 ** (-9), 10**3)
 # print(tembed)
 # print(
-#     tembed.time_embedding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
+#     tembed.time_encodeding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
 # )  # 128
 
 t_emb = tembed.forward(torch.tensor([1, 3, 4, 5, 6, 7, 8, 2]))
