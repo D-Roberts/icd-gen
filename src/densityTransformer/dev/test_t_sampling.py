@@ -71,7 +71,7 @@ z = zsampler.sample()
 # to drive down to 0 by optimization
 
 
-#########################Get a better sense of the needed time step embedding
+#########################Get a better sense of the needed time step encodeding
 
 x = torch.randn((5, 128)).unsqueeze(1)
 # print(x.shape)
@@ -81,42 +81,42 @@ y = torch.tile(x, (1, 8, 1))
 
 
 ##########################
-class TimeEmbedding(nn.Module):
+class Timeencodeding(nn.Module):
     """We just have to have them.
 
     logt will be drawn from a U(logtmin, logtmax), will tmin = 10**-9 and tmax = 10**3
 
-    each token in sequence will have an associated t. embed to same d_model and add to the
-    pathc and space embeddings.
+    each token in sequence will have an associated t. encode to same d_model and add to the
+    pathc and space encodedings.
 
-    embeddings are sin cos
+    encodedings are sin cos
 
     as of right now I have same t accross the sequence
-    I embed it with this
+    I encode it with this
     I tile it for seq len - identical for each sequence token
-    I concat on the embedding dimension to the x input in enerdit block
+    I concat on the encodeding dimension to the x input in enerdit block
 
     """
 
     def __init__(
         self,
         d_model,
-        frequency_embedding_size=32,
+        frequency_encodeding_size=32,
         mint=1 / (10**3),
         maxt=1 / (10 ** (-9)),
     ):
         super().__init__()
-        self.time_embedder = nn.Sequential(
-            nn.Linear(frequency_embedding_size, d_model, bias=True),
+        self.time_encodeder = nn.Sequential(
+            nn.Linear(frequency_encodeding_size, d_model, bias=True),
             nn.SiLU(),
             nn.Linear(d_model, d_model, bias=True),
         )
-        self.frequency_embedding_size = frequency_embedding_size
+        self.frequency_encodeding_size = frequency_encodeding_size
         self.mint = mint
         self.maxt = maxt
 
     @staticmethod
-    def time_embedding(t, dim, mint, maxt):
+    def time_encodeding(t, dim, mint, maxt):
         half = dim // 2
         freqs = torch.exp(
             -math.log(maxt - mint)
@@ -127,32 +127,32 @@ class TimeEmbedding(nn.Module):
         )  # the device will need to be given
         args = t[:, None].float() * freqs[None]  # for each t in the t tensor
         # print(args)
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        encodeding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
+            encodeding = torch.cat(
+                [encodeding, torch.zeros_like(encodeding[:, :1])], dim=-1
             )
-        return embedding  # this will be shape (len of t, 256)
+        return encodeding  # this will be shape (len of t, 256)
 
     def forward(self, t):
-        t_freq = self.time_embedding(
-            t, self.frequency_embedding_size, self.mint, self.maxt
+        t_freq = self.time_encodeding(
+            t, self.frequency_encodeding_size, self.mint, self.maxt
         )
-        time_embed = self.time_embedder(t_freq)
-        return time_embed
+        time_encode = self.time_encodeder(t_freq)
+        return time_encode
 
 
-tembed = TimeEmbedding(32, 256, 1 / (10 ** (3)), 1 / (10 ** (-9)))
-# print(tembed)
+tencode = Timeencodeding(32, 256, 1 / (10 ** (3)), 1 / (10 ** (-9)))
+# print(tencode)
 # print(
-#     tembed.time_embedding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
+#     tencode.time_encodeding(torch.tensor([1, 3, 4]), 256, 10 ** (-9), 10**3).shape
 # )  # 128
 # for instance if I have
 t_as_in_gen_now = torch.exp(
     torch.empty(5).uniform_(math.log(10 ** (-9)), math.log(10**3))
 )
-t_emb = tembed.forward(t_as_in_gen_now)
-print(f"for t {t_as_in_gen_now} the time embed is {t_emb}")
+t_emb = tencode.forward(t_as_in_gen_now)
+print(f"for t {t_as_in_gen_now} the time encode is {t_emb}")
 
 # the other way to gen
 logt = logt_distrib.sample(torch.tensor([5]))

@@ -90,8 +90,8 @@ class TransformerModel(nn.Module):
         else:
             inds = torch.tensor(inds)
 
-        embeds = self._read_in(xs)
-        output = self._backbone(inputs_embeds=embeds).last_hidden_state
+        encodes = self._read_in(xs)
+        output = self._backbone(inputs_encodes=encodes).last_hidden_state
         prediction = self._read_out(output)
         return prediction[:, ::2, 0][
             :, inds
@@ -673,8 +673,8 @@ class TransformerModelV2L2(nn.Module):
 
         # try add in between; residual connections only make sense when multiple layers really
         # original transf encoder layer: is multihead; add+norm; feed foreard; add + norm; then stack n of these layers; then either transf-decoder or some
-        # final mlp as decoder; and at first embed+pos embed
-        # omiting the feedforward (linear drop relu or similar) and pos embed and norm/dyt
+        # final mlp as decoder; and at first encode+pos encode
+        # omiting the feedforward (linear drop relu or similar) and pos encode and norm/dyt
 
         # so step by step
         # f_attn = self.dyt(xs + f_attn)
@@ -750,8 +750,8 @@ class TransformerModelV2L2_Merged(nn.Module):
 
         # try add in between; residual connections only make sense when multiple layers really
         # original transf encoder layer: is multihead; add+norm; feed foreard; add + norm; then stack n of these layers; then either transf-decoder or some
-        # final mlp as decoder; and at first embed+pos embed
-        # omiting the feedforward (linear drop relu or similar) and pos embed and norm/dyt
+        # final mlp as decoder; and at first encode+pos encode
+        # omiting the feedforward (linear drop relu or similar) and pos encode and norm/dyt
 
         # so step by step
         # f_attn = self.dyt(xs + f_attn)

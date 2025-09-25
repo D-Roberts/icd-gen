@@ -29,21 +29,21 @@ print(pipe.model)
 
 
 # DiTTransformer2DModel(
-#   (pos_embed): PatchEmbed(
+#   (pos_encode): Patchencode(
 #     (proj): Conv2d(4, 1152, kernel_size=(2, 2), stride=(2, 2))
 #   )
 #   (transformer_blocks): ModuleList(
 #     (0-27): 28 x BasicTransformerBlock(
 #       (norm1): AdaLayerNormZero(
-#         (emb): CombinedTimestepLabelEmbeddings(
+#         (emb): CombinedTimestepLabelencodedings(
 #           (time_proj): Timesteps()
-#           (timestep_embedder): TimestepEmbedding(
+#           (timestep_encodeder): Timestepencodeding(
 #             (linear_1): Linear(in_features=256, out_features=1152, bias=True)
 #             (act): SiLU()
 #             (linear_2): Linear(in_features=1152, out_features=1152, bias=True)
 #           )
-#           (class_embedder): LabelEmbedding(
-#             (embedding_table): Embedding(1001, 1152)
+#           (class_encodeder): Labelencodeding(
+#             (encodeding_table): encodeding(1001, 1152)
 #           )
 #         )
 #         (silu): SiLU()

@@ -214,8 +214,8 @@ def train(model, args):
     )
 
     # Freeze the projection layers
-    # model.embedpatch.projection.weight.requires_grad = False
-    # model.unembed.weight.requires_grad = False
+    # model.encodepatch.projection.weight.requires_grad = False
+    # model.unencode.weight.requires_grad = False
 
     # see how many to train
     c1 = 0

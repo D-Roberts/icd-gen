@@ -220,10 +220,10 @@ class GroupSampler(DataSampler):
         # how the underlying data is generated. Not sure if I want to do this or not.
         return X_clean, X_gnoisy, y
 
-    def get_fused_sequence(self, X_clean=None, X_dirty=None):
-        # just assume if X_clean given we also have X_dirty
+    def get_fused_sequence(self, X_clean=None, X_corrupted=None):
+        # just assume if X_clean given we also have X_corrupted
 
-        # TODO@dr I am calling it dirty bc I wonder about other distortions
+        # TODO@dr I am calling it corrupted bc I wonder about other distortions
         # beside noise; for instance those eigendistortions. Can
         # I do anything with that? Probably don't have time now.
         # Also those geometric transformations used for data augmentation
@@ -232,8 +232,8 @@ class GroupSampler(DataSampler):
         # Probably but don't have time now.
 
         if X_clean is None:
-            # X_clean, X_dirty, y = self.add_gamma_noise()
-            X_clean, X_dirty, y = self.add_gaussian_noise()
+            # X_clean, X_corrupted, y = self.add_gamma_noise()
+            X_clean, X_corrupted, y = self.add_gaussian_noise()
 
         # because the last gnoised patch should be the query and
         # its clean version the label, simply set the last clean
@@ -253,12 +253,12 @@ class GroupSampler(DataSampler):
         # TODO@DR: recheck this padding logic, seems something is
         # different as I turn the noise off.
 
-        # want to have dirty first in fused
-        # print(f"check that the noise is turned off {X_clean == X_dirty}")
+        # want to have corrupted first in fused
+        # print(f"check that the noise is turned off {X_clean == X_corrupted}")
 
-        fused_seq = torch.cat((X_dirty, X_clean), dim=-1)
+        fused_seq = torch.cat((X_corrupted, X_clean), dim=-1)
 
-        # print(f"are dirty and clean diff? {X_dirty==X_clean}") #yes they are different
+        # print(f"are corrupted and clean diff? {X_corrupted==X_clean}") #yes they are different
 
         return fused_seq, label
 

@@ -38,29 +38,29 @@ def weight_matrix(dim_in, dim_out, mode="default"):
 
 
 # now the sequence has double width due to concat clean and noisy
-class PatchEmbedding(nn.Module):
+class Patchencodeding(nn.Module):
     def __init__(self, dim_in, d_model):
         super().__init__()
 
-        # aim to embed the clean and noisy together for dim reduction
-        # alternatively I could add the space embed directly in the
+        # aim to encode the clean and noisy together for dim reduction
+        # alternatively I could add the space encode directly in the
         # 200 dim
 
         # set bias to zero
         self.projection = torch.nn.Linear(dim_in, d_model, bias=False)
 
     def forward(self, x):
-        # print(f"layer in patch embed {self.projection}")
-        # print(f"debug patch embed shapes {x.shape}")
+        # print(f"layer in patch encode {self.projection}")
+        # print(f"debug patch encode shapes {x.shape}")
         x = self.projection(x)
-        # as expected (B, seq_len, d_model=embeddim)
+        # as expected (B, seq_len, d_model=encodedim)
         return x
 
 
-# this is the more standard sin pos embed; diff a bit from dit
-# I decided to call them Space Embeddings. Seem to me more apt
+# this is the more standard sin pos encode; diff a bit from dit
+# I decided to call them Space encodedings. Seem to me more apt
 # Since Pos was from language really
-class SpaceEmbedding(nn.Module):
+class Spaceencodeding(nn.Module):
     def __init__(self, d_model, max_len=512):
         super().__init__()
         se = torch.zeros(max_len, d_model)  # (seq_len, d_model)
@@ -75,8 +75,8 @@ class SpaceEmbedding(nn.Module):
         self.register_buffer("se", se.unsqueeze(0))  # Add a batch dimension
 
     def forward(self, x):
-        # x is the sequence of patch embeddings, shape (batch_size, seq_len, d_model)
-        # We need to add space embeddings to each element in the sequence
+        # x is the sequence of patch encodedings, shape (batch_size, seq_len, d_model)
+        # We need to add space encodedings to each element in the sequence
 
         return self.se[:, : x.size(1)]
 
@@ -86,7 +86,7 @@ class TransformerModelV2(nn.Module):
     Simplified attention only 1 layer and softmax;
 
     If choose to use a frozen pretrained transformer kernel,
-    gpt2 embeddings for instance have size 768 so
+    gpt2 encodedings for instance have size 768 so
     d_model must be 768.
     """
 
@@ -114,7 +114,7 @@ class TransformerModelV2(nn.Module):
             elif backbone == "ViT":
                 self.bb = "ViT"
                 vitm = ViTModel.from_pretrained("google/vit-base-patch16-224")
-                # vit comes with its own position embeddings
+                # vit comes with its own position encodedings
                 self._backbone = vitm.encoder
                 for param in self._backbone.parameters():
                     param.requires_grad = False
@@ -124,9 +124,9 @@ class TransformerModelV2(nn.Module):
         self.W_PV = weight_matrix(d_model, d_model, mode="default")
         self.rho = 1.0
 
-        self.embedpatch = PatchEmbedding(dim_input, d_model)
-        self.embedpos = SpaceEmbedding(d_model, context_length)
-        self.unembed = torch.nn.Linear(d_model, dim_input, bias=True)
+        self.encodepatch = Patchencodeding(dim_input, d_model)
+        self.encodepos = Spaceencodeding(d_model, context_length)
+        self.unencode = torch.nn.Linear(d_model, dim_input, bias=True)
 
     def forward(self, xs):
         """
@@ -141,29 +141,29 @@ class TransformerModelV2(nn.Module):
         batchsz, n_dim, n_tokens = xs.size()
 
         permuted = torch.permute(xs, (0, 2, 1))
-        patch_embed = self.embedpatch(permuted)
-        # print(f"patch embed shape********* {patch_embed.shape}")
+        patch_encode = self.encodepatch(permuted)
+        # print(f"patch encode shape********* {patch_encode.shape}")
 
-        pos_embed = self.embedpos(
-            patch_embed
+        pos_encode = self.encodepos(
+            patch_encode
         )  # [1, 10, 32] will add same order each batch
-        # print(f"pos embed shape********* {pos_embed.shape}")
+        # print(f"pos encode shape********* {pos_encode.shape}")
 
-        embedded = patch_embed + pos_embed
+        encodeded = patch_encode + pos_encode
         # print(
-        #     f"after embeddings shape ........{embedded.shape}"
+        #     f"after encodedings shape ........{encodeded.shape}"
         # )  # they have (20, 10, 32)
 
         # Choose to add a frozen pretrained backbone, as a kernel projector
 
         if self.add_frozen_kernel:
             if self.bb == "GPT2":
-                embedded = self._backbone(inputs_embeds=embedded).last_hidden_state
+                encodeded = self._backbone(inputs_encodes=encodeded).last_hidden_state
 
             if self.bb == "ViT":
-                embedded = self._backbone(embedded).last_hidden_state
+                encodeded = self._backbone(encodeded).last_hidden_state
 
-        embedded = torch.permute(embedded, (0, 2, 1))
+        encodeded = torch.permute(encodeded, (0, 2, 1))
         # the rest of this expects shape unpermuted
         W_KQ = self.W_KQ  # dmod, dmod
         W_PV = self.W_PV
@@ -171,13 +171,13 @@ class TransformerModelV2(nn.Module):
 
         # patch seq == context len should be last dim
         # xs_skip_last = xs[:, :, :-1]
-        xs_skip_last = embedded[:, :, :-1]
+        xs_skip_last = encodeded[:, :, :-1]
 
         # because last is the query
         # print(f"xs_skip_last {xs_skip_last.shape}") # (20, 9, 32)
 
         # now scaling is a fixed constant as in original QKV-attention - 1/sqrt(n)
-        attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ embedded / self.rho
+        attn_arg = torch.transpose(xs_skip_last, 1, 2) @ W_KQ @ encodeded / self.rho
         # print(f"recall shape of softm _arg {attn_arg.shape}")  # B, D-1, D
         softmax_attn_arg = torch.softmax(attn_arg, dim=1)
         f_attn = W_PV @ xs_skip_last @ softmax_attn_arg
@@ -187,8 +187,8 @@ class TransformerModelV2(nn.Module):
         # ([20, 32, 10]) including the query
 
         # the target comes in 200dim
-        # so unembed here to 200 dim though I could probably keep only the 100dim
-        out_full = self.unembed(torch.transpose(f_attn, 2, 1))
+        # so unencode here to 200 dim though I could probably keep only the 100dim
+        out_full = self.unencode(torch.transpose(f_attn, 2, 1))
 
         # print(f"shape unemmbedded output {out_full.shape}")
 

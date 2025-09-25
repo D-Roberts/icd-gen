@@ -73,7 +73,7 @@ def get_batch_samples_w_context(data, data_context):
 
     # return t, z, target, fused
     return t, z, inputs, noisy, noisy_context, clean_context
-    # keep it very simple; the context will be added a sequence embedding
+    # keep it very simple; the context will be added a sequence encodeding
     # and it will be unpatched and projected
 
 
@@ -88,26 +88,26 @@ for i, data in enumerate(train_loader):
     print(clean)  # same
 
 
-class ContextEmbedding(nn.Module):
+class Contextencodeding(nn.Module):
     def __init__(self, d_model, vocab_size=2):
         """
-        encode if 0=clean or 1=noisy akin to question answering bert style embeddings
+        encode if 0=clean or 1=noisy akin to question answering bert style encodedings
         for in context tokens
 
         aim to have noisy first clean second
         will be added to the fused noisy clean context to tell the model what's what
         """
         super().__init__()
-        self.embedding_layer = nn.Embedding(vocab_size, d_model)
+        self.encodeding_layer = nn.encodeding(vocab_size, d_model)
 
     def forward(self, x):
-        return self.embedding_layer(x)
+        return self.encodeding_layer(x)
 
 
-ce = ContextEmbedding(3, 2)  # embed dim is 3
+ce = Contextencodeding(3, 2)  # encode dim is 3
 
 res = ce(torch.LongTensor([1, 0]))
-print(res, res.shape)  # 2,3 # 2 because 2 embeddings
+print(res, res.shape)  # 2,3 # 2 because 2 encodedings
 # print reshape assume noisy and clean concats
 reshape = res.view(1, -1)
 print(reshape, reshape.shape)

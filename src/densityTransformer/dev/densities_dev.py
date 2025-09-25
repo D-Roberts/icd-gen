@@ -5,7 +5,7 @@ Archi step by step debug process.
 import torch
 import torch.nn as nn
 import math
-from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+from timm.models.vision_transformer import Patchencode, Attention, Mlp
 import torch.nn.functional as F
 
 
@@ -37,31 +37,31 @@ class DyTanh(nn.Module):
         return x
 
 
-# Embed - Not used in the simple datagen
+# encode - Not used in the simple datagen
 # now the sequence has double width due to concat clean and noisy
-class PatchEmbedding(nn.Module):
+class Patchencodeding(nn.Module):
     def __init__(self, dim_in, d_model):
         super().__init__()
 
-        # aim to embed the clean and noisy together for dim reduction
-        # alternatively I could add the space embed directly in the
+        # aim to encode the clean and noisy together for dim reduction
+        # alternatively I could add the space encode directly in the
         # 200 dim
 
         # set bias to zero
         self.projection = torch.nn.Linear(dim_in, d_model, bias=False)
 
     def forward(self, x):
-        # print(f"layer in patch embed {self.projection}")
-        # print(f"debug patch embed shapes {x.shape}")
+        # print(f"layer in patch encode {self.projection}")
+        # print(f"debug patch encode shapes {x.shape}")
         x = self.projection(x)
-        # as expected (B, seq_len, d_model=embeddim)
+        # as expected (B, seq_len, d_model=encodedim)
         return x
 
 
-# this is the more standard sin pos embed; diff a bit from dit
-# I decided to call them Space Embeddings. Seem to me more apt
+# this is the more standard sin pos encode; diff a bit from dit
+# I decided to call them Space encodedings. Seem to me more apt
 # Since Pos was from language really
-class SpaceEmbedding(nn.Module):
+class Spaceencodeding(nn.Module):
     def __init__(self, d_model, max_len=512):
         super().__init__()
         se = torch.zeros(max_len, d_model)  # (seq_len, d_model)
@@ -76,43 +76,43 @@ class SpaceEmbedding(nn.Module):
         self.register_buffer("se", se.unsqueeze(0))  # Add a batch dimension
 
     def forward(self, x):
-        # x is the sequence of patch embeddings, shape (batch_size, seq_len, d_model)
-        # We need to add space embeddings to each element in the sequence
+        # x is the sequence of patch encodedings, shape (batch_size, seq_len, d_model)
+        # We need to add space encodedings to each element in the sequence
 
         return self.se[:, : x.size(1)]
 
 
-class ContextEmbedding(nn.Module):
+class Contextencodeding(nn.Module):
     def __init__(self, d_model, vocab_size=2):
         """
-        encode if 0=clean or 1=noisy akin to question answering bert style embeddings
+        encode if 0=clean or 1=noisy akin to question answering bert style encodedings
         for in context tokens
 
         aim to have noisy first clean second
         will be added to the fused noisy clean context to tell the model what's what
         """
         super().__init__()
-        self.embedding_layer = nn.Embedding(vocab_size, d_model)
+        self.encodeding_layer = nn.encodeding(vocab_size, d_model)
 
     def forward(self, x):
-        return self.embedding_layer(x)
+        return self.encodeding_layer(x)
 
 
 # inspired from https://github.com/facebookresearch/DiT/blob/main/models.py#L26
-class TimeEmbedding(nn.Module):
+class Timeencodeding(nn.Module):
     """We just have to have them.
 
     logt will be drawn from a U(logtmin, logtmax), will tmin = 10**-9 and tmax = 10**3
 
-    each token in sequence will have an associated t. embed to same d_model and add to the
-    pathc and space embeddings.
+    each token in sequence will have an associated t. encode to same d_model and add to the
+    pathc and space encodedings.
 
-    embeddings are sin cos
+    encodedings are sin cos
 
     as of right now I have same t accross the sequence
-    I embed it with this
+    I encode it with this
     I tile it for seq len - identical for each sequence token
-    I concat on the embedding dimension to the x input in DensityTranformer block
+    I concat on the encodeding dimension to the x input in DensityTranformer block
 
     The t will be distinct for each instance in the batch
     """
@@ -120,22 +120,22 @@ class TimeEmbedding(nn.Module):
     def __init__(
         self,
         d_model,
-        frequency_embedding_size=256,
+        frequency_encodeding_size=256,
         mint=0,
         maxt=10000,
     ):
         super().__init__()
-        self.time_embedder = nn.Sequential(
-            nn.Linear(frequency_embedding_size, d_model, bias=True),
+        self.time_encodeder = nn.Sequential(
+            nn.Linear(frequency_encodeding_size, d_model, bias=True),
             nn.SiLU(),
             nn.Linear(d_model, d_model, bias=True),
         )
-        self.frequency_embedding_size = frequency_embedding_size
+        self.frequency_encodeding_size = frequency_encodeding_size
         self.mint = mint
         self.maxt = maxt
 
     @staticmethod
-    def time_embedding(t, dim, mint, maxt):
+    def time_encodeding(t, dim, mint, maxt):
         half = dim // 2
         freqs = torch.exp(
             -math.log(maxt - mint)
@@ -146,19 +146,19 @@ class TimeEmbedding(nn.Module):
         )  # the device will need to be given
         args = t[:, None].float() * freqs[None]  # for each t in the t tensor
         # print(args)
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        encodeding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
+            encodeding = torch.cat(
+                [encodeding, torch.zeros_like(encodeding[:, :1])], dim=-1
             )
-        return embedding  # this will be shape (len of t, 256)
+        return encodeding  # this will be shape (len of t, 256)
 
     def forward(self, t):
-        t_freq = self.time_embedding(
-            t, self.frequency_embedding_size, self.mint, self.maxt
+        t_freq = self.time_encodeding(
+            t, self.frequency_encodeding_size, self.mint, self.maxt
         )
-        time_embed = self.time_embedder(t_freq)
-        return time_embed
+        time_encode = self.time_encodeder(t_freq)
+        return time_encode
 
 
 """
@@ -211,10 +211,10 @@ class DensityTranformerFinal(nn.Module):
         # query = noisy[:, :d, -1]
         # query = noisy  # in simple this is the query
 
-        # sp_pred = sh[:, :, -1]  # the space head should already have d // 2
-        # sp_pred = sh  # this needs to come unpatchified with the time embed
+        # sp_pred = sh[:, :, -1]  # the Space Final should already have d // 2
+        # sp_pred = sh  # this needs to come unpatchified with the time encode
         # and whatever other context removed
-        # just add an average pooling after time embedd removed
+        # just add an average pooling after time encoded removed
 
         # print(f"sp_pred in energy {sp_pred.shape}")
         # print(f"th shape in energy {th.shape}")  # (B, seqlen) with context otw (b,)
@@ -224,8 +224,8 @@ class DensityTranformerFinal(nn.Module):
         # th_pred = th
 
         # In simple, time score also must come unpatchified and one pred only
-        # since no context - so detach time embedd token and average pool
-        # IN time head layer
+        # since no context - so detach time encoded token and average pool
+        # IN Time Final layer
 
         # print(f"th_pred shape in energy {th_pred.shape}") #(B,)
 
@@ -272,7 +272,7 @@ class PreHead(nn.Module):
     def __init__(self, context_len, d_model):
         super().__init__()
 
-        # context + 1 because of the concatenated time embed
+        # context + 1 because of the concatenated time encode
         self.dyt_final = DyTanh((context_len + 2, d_model))
         self.silu = nn.SiLU()
 
@@ -297,7 +297,7 @@ class TimeHead(nn.Module):
     as of right now
 
     x comes in (B, d) after unpatch in simple task see more detail in
-    space head
+    Space Final
     """
 
     def __init__(self, d_model, input_dim, context_len):
@@ -305,18 +305,18 @@ class TimeHead(nn.Module):
 
         self.dyt_time = DyTanh((context_len * d_model))
         self.silu = nn.SiLU()
-        self.time_head = nn.Linear(
+        self.time_final = nn.Linear(
             context_len * d_model, 1, bias=True
         )  # make it one directly -as is the supervision and partial U of t
 
     def forward(self, x):
-        # print("shape of x as it comes in time head ", x.shape)
+        # print("shape of x as it comes in Time Final ", x.shape)
         x = self.dyt_time(x)
         # print("shape of x as it comes out of dyt in final layer ", x.shape)
         x = self.silu(x)
-        x = self.time_head(x)
+        x = self.time_final(x)
 
-        # print("shape of x as it comes out of time head ", x.shape)
+        # print("shape of x as it comes out of Time Final ", x.shape)
         return x
 
 
@@ -324,7 +324,7 @@ class SpaceHead(nn.Module):
     """
     with a silu and a dyt as in pre-norm but no resid connections
 
-    For simple task - need to detach time embed and unpatchify
+    For simple task - need to detach time encode and unpatchify
 
     for simple img level no context task x here is already (B, d)
     """
@@ -336,17 +336,17 @@ class SpaceHead(nn.Module):
             shape_in=(context_len * d_model)
         )  # bc it was unpatchified
         self.silu = nn.SiLU()
-        self.space_head = nn.Linear(
+        self.space_final = nn.Linear(
             context_len * d_model, input_dim, bias=True
         )  # project to d dim
 
     def forward(self, x):
         # print(f"shape in head {x.shape}")  # [3, 8, 4] is (B, seq_len, d_model)
         # in simple task: torch.Size([20, 257, 32])
-        # detach time embed before
+        # detach time encode before
         x = self.dyt_space(x)
         x = self.silu(x)
-        x = self.space_head(x)
+        x = self.space_final(x)
         return x
 
 
@@ -359,7 +359,7 @@ class DensityTranformerBlock(nn.Module):
     def __init__(self, d_model, context_len, num_heads=1, mlp_ratio=4.0):  # as in DiT
         super().__init__()
 
-        # context_len+2 bc I conditioned with the time embeds - 2kinds now
+        # context_len+2 bc I conditioned with the time encodes - 2kinds now
         # and the two context tokens (noisy and clean)
         self.dyt1 = DyTanh((context_len + 4, d_model))
 
@@ -379,13 +379,13 @@ class DensityTranformerBlock(nn.Module):
             drop=0,
         )
 
-    def forward(self, x, time_embed, time_embed1, embedded_context):
-        # print(f"shape of time emebde w simple {time_embed.shape}")
+    def forward(self, x, time_encode, time_encode1, encodeded_context):
+        # print(f"shape of time emebde w simple {time_encode.shape}")
         # print(f"shape of x near time emebde w simple {x.shape}")
 
-        # Condition on the time embedding in each block (only 1 block used at this time)
-        # print(f"what is concat {embedded_context.shape}")
-        x = torch.cat([x, time_embed, time_embed1, embedded_context], dim=1)
+        # Condition on the time encodeding in each block (only 1 block used at this time)
+        # print(f"what is concat {encodeded_context.shape}")
+        x = torch.cat([x, time_encode, time_encode1, encodeded_context], dim=1)
         x = self.dyt1(x)
         x = x + self.attn(x)
         x = self.dyt2(x)
@@ -416,7 +416,7 @@ class DensityTranformer(nn.Module):
         # 1 is for input channesl which is grayscale 1; patch_dim is one dim
         # so area is p*p; input_dim is likewise h
         self.h = int(math.sqrt(input_dim))  # for us image comes flattened
-        self.patch_embed = PatchEmbed(self.h, patch_dim, 1, d_model, bias=True)
+        self.patch_encode = Patchencode(self.h, patch_dim, 1, d_model, bias=True)
 
         # IN simple synthetic image level case, context_len is num of patches
         if context_len is None:
@@ -425,25 +425,25 @@ class DensityTranformer(nn.Module):
         else:
             self.context_len = context_len
 
-        self.space_embed = SpaceEmbedding(d_model, self.context_len)
-        self.time_embed = TimeEmbedding(
+        self.space_encode = Spaceencodeding(d_model, self.context_len)
+        self.time_encode = Timeencodeding(
             d_model,
-            frequency_embedding_size=256,
+            frequency_encodeding_size=256,
             mint=0,
             maxt=10000,
         )
-        self.time_embed1 = TimeEmbedding(
+        self.time_encode1 = Timeencodeding(
             d_model,
-            frequency_embedding_size=256,
+            frequency_encodeding_size=256,
             mint=0,
             maxt=10000,
         )
 
         # on concat noisy first clean after
-        self.patch_embed_context = PatchEmbedding(input_dim, d_model)
-        self.context_seq_embed = ContextEmbedding(d_model=d_model, vocab_size=2)
+        self.patch_encode_context = Patchencodeding(input_dim, d_model)
+        self.context_seq_encode = Contextencodeding(d_model=d_model, vocab_size=2)
 
-        ######################################Before this - inputs embedding
+        ######################################Before this - inputs encodeding
         # context len now is number of patches from Patch making ViT style
 
         # then comes the list of N DensityTranformer blocks
@@ -462,7 +462,7 @@ class DensityTranformer(nn.Module):
 
         # print(f"is context len the right thing {context_len}")
 
-        # a kind of unembed; aim to use only on the non-zero part of
+        # a kind of unencode; aim to use only on the non-zero part of
         # the noisy query and clean label
 
         # in simple - at full image with no context and unfused
@@ -471,8 +471,8 @@ class DensityTranformer(nn.Module):
         # so I think input dim should be patch dim here
         # since I aimed for patch dim of 2 should have patch size of 4
 
-        self.time_head = TimeHead(d_model, input_dim, self.context_len)
-        self.space_head = SpaceHead(d_model, input_dim, self.context_len)
+        self.time_final = TimeHead(d_model, input_dim, self.context_len)
+        self.space_final = SpaceHead(d_model, input_dim, self.context_len)
 
         # self.pre_init() #TODO@DR see later about custom init - right now is hurting
 
@@ -496,11 +496,11 @@ class DensityTranformer(nn.Module):
 
     #     # zero out out layer on the heads TODO@DR: think this again
 
-    #     nn.init.constant_(self.space_head.space_head.bias, 0)
-    #     nn.init.constant_(self.time_head.time_head.bias, 0)
+    #     nn.init.constant_(self.space_final.space_final.bias, 0)
+    #     nn.init.constant_(self.time_final.time_final.bias, 0)
 
-    #     nn.init.constant_(self.space_head.space_head.weight, 0)
-    #     nn.init.constant_(self.time_head.time_head.weight, 0)
+    #     nn.init.constant_(self.space_final.space_final.weight, 0)
+    #     nn.init.constant_(self.time_final.time_final.weight, 0)
 
     def unpatchify(self, x):
         """
@@ -528,75 +528,75 @@ class DensityTranformer(nn.Module):
         x = x.view(
             (b_s, C, self.h, self.h)
         )  # timm patch layer wants image in hxw format
-        patch_embed = self.patch_embed(x)
+        patch_encode = self.patch_encode(x)
 
-        # print(f"patch_embed now after timm in simple {patch_embed.shape}")
+        # print(f"patch_encode now after timm in simple {patch_encode.shape}")
 
-        space_embed = self.space_embed(
-            patch_embed
+        space_encode = self.space_encode(
+            patch_encode
         )  # [1, seq_len, d_model] will add same order each instance in batch
 
-        # print(f"shape of space embedding {space_embed.shape}")
+        # print(f"shape of space encodeding {space_encode.shape}")
 
-        time_embed = self.time_embed(t)
-        # print(f"shape of time embedding {time_embed.shape}")
+        time_encode = self.time_encode(t)
+        # print(f"shape of time encodeding {time_encode.shape}")
 
-        x = patch_embed + space_embed
+        x = patch_encode + space_encode
         # for Simple need to squeeze out the 1 dim
         x = x.squeeze()
 
-        # Tile identical t embeddings for each context token.
+        # Tile identical t encodedings for each context token.
         # Right now they get concat to the input of each DensityTranformer block
 
-        time_embed = time_embed.unsqueeze(1)
-        # time_embed = torch.tile(time_embed, (1, 256, 1)) # on simple
+        time_encode = time_encode.unsqueeze(1)
+        # time_encode = torch.tile(time_encode, (1, 256, 1)) # on simple
         # concatenate 1 to the sequence; porbably should do this always
         # and not to each patch token
 
-        # Add another time embedding for sqrt(t/d) scale
+        # Add another time encodeding for sqrt(t/d) scale
         new_t = torch.sqrt(t) / self.h
-        time_embed1 = self.time_embed1(new_t)
-        time_embed1 = time_embed1.unsqueeze(1)
+        time_encode1 = self.time_encode1(new_t)
+        time_encode1 = time_encode1.unsqueeze(1)
 
         ###############Put context in
 
         context = torch.stack((noisy_context, clean_context), dim=1)
-        # print(f"shape of context before embed {context.shape}")
+        # print(f"shape of context before encode {context.shape}")
 
-        embed_context_patch = self.patch_embed_context(context)
-        # print(f"shape of embed_context_patch  {embed_context_patch.shape}")
+        encode_context_patch = self.patch_encode_context(context)
+        # print(f"shape of encode_context_patch  {encode_context_patch.shape}")
 
         # have a context of only one noisy and one clean
         indices = torch.LongTensor([0, 1])
-        embed_context_seq = self.context_seq_embed(indices.to(device))
-        # print(f"embed_context_seq {embed_context_seq}")
-        # print(f"shape of embed_context_seq  {embed_context_seq.shape}")
-        embedded_context = embed_context_patch + embed_context_seq
-        # print(f"shape of embed_context_seq  {embedded_context.shape}")
+        encode_context_seq = self.context_seq_encode(indices.to(device))
+        # print(f"encode_context_seq {encode_context_seq}")
+        # print(f"shape of encode_context_seq  {encode_context_seq.shape}")
+        encodeded_context = encode_context_patch + encode_context_seq
+        # print(f"shape of encode_context_seq  {encodeded_context.shape}")
 
-        ##################Input embedding area over
+        ##################Input encodeding area over
 
         # add DensityTranformer blocks
         for block in self.blocks:
-            x = block(x, time_embed, time_embed1, embedded_context)
+            x = block(x, time_encode, time_encode1, encodeded_context)
 
-        # I need to detach timeembed now before heads
+        # I need to detach timeencode now before heads
         # But I need the prehead layer to reshape first
 
         # print(f"check out x after block {x.shape}") #[5, 257, 32]) (b, context_len+1, d_model) or 258 of 2 kinds
         # x = self.prehead_linear(x) #I'll take this out
         # print(f"check out x after prehead layer {x.shape}")#[5, 257, 32])
 
-        x = x[:, :-4, :]  # this is where I detach the time embed both kinds
-        # print(f"check out x after time embed detached {x.shape}") #[5, 256, 32]) ok
+        x = x[:, :-4, :]  # this is where I detach the time encode both kinds
+        # print(f"check out x after time encode detached {x.shape}") #[5, 256, 32]) ok
         # take all conditionining off inlcuding context
 
         # And unpatchify here before heads
         x = self.unpatchify(x)
         # print(f"shape of x before heads {x.shape}") # (b, 256*32)
 
-        space_score = self.space_head(x)
-        time_score = self.time_head(x)
+        space_score = self.space_final(x)
+        time_score = self.time_final(x)
 
         # sh, th, y, cf1 - learn it
         # y is the noised in theory but here is called x, the noised query and context tokens

@@ -5,7 +5,7 @@ model:
     n_layer: 12
     n_head: 8
     n_dims: 8  
-    n_positions: 500 #TODO@DR prep for position embeddings these would be the context+target like in ADPM
+    n_positions: 500 #TODO@DR prep for position encodedings these would be the context+target like in ADPM
 
 
 DATAGEN_GLOBALS:
@@ -87,7 +87,7 @@ training:
     nn_model: TransformerModelV1 # model depends if linear or grouped cases
     
             # TransformerModelV2 #one attn layer with softmax and now with optionally
-            # frozen embeddings and frozen large backbone as projection kernel
+            # frozen encodedings and frozen large backbone as projection kernel
     
     
     seed_torch: 0 #(default: None) None or an int (sets net weights; possibly batch order/shuffle)

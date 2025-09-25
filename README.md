@@ -38,7 +38,7 @@
         * Rethink how to input the context and prediction for denoise rather than
         classification in the pos association based spatial transformer
 
-        * likely add context embedding here as well not sure yet; 
+        * likely add context encodeding here as well not sure yet; 
 
         * Model 2 - spatialtransformer - added but learning with the denoise task
         with context is - not learning well yet. Debug.

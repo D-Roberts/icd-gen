@@ -25,7 +25,7 @@ from dgen_for_gaussian import (
     get_batch_samples_w_context,
 )
 
-from src.enerdit.dev.densities_dev import *
+from src.densityTransformer.dev.densities_dev import *
 
 API_KEY = Path(".comet_api").read_text().strip()
 
@@ -170,12 +170,12 @@ class SpaceLossV1(nn.Module):
     def forward(self, space_score, z, clean, query, t):
         """
         p19
-        sp is space head prediction of shape of z
+        sp is Space Final prediction of shape of z
 
         """
         # print(f"what is y shape - the clean in SpaceLoss {y.shape}")
         # print(f"what is x shape - the noisy in SpaceLoss {x.shape}")
-        # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
+        # print(f"what is preds from Space Final shape - in SpaceLoss {preds.shape}")
 
         # get z from clean query, noisy query and t (assume t is not 0, which
         # should not be in training)
@@ -218,7 +218,7 @@ class SpaceLossV2(nn.Module):
         # print(f"what is shape - the query in SpaceLoss {query.shape}")
         # print(f"what is shape - the z in SpaceLoss {z.shape}")
 
-        # print(f"what is preds from Space Head shape - in SpaceLoss {preds.shape}")
+        # print(f"what is preds from Space Final shape - in SpaceLoss {preds.shape}")
         # so here x is (B, dim, seq_len) while y=clean target on last noisy query
         # is (B, dim)
 
@@ -261,7 +261,7 @@ class SpaceLossV2(nn.Module):
 
 
 class SpaceTimeLoss(nn.Module):
-    """with space and time heads losses together"""
+    """with space and Time Finals losses together"""
 
     def __init__(self):
         super(SpaceTimeLoss, self).__init__()
@@ -538,7 +538,7 @@ for epoch in range(epochs):
     #     for name, param in model.named_parameters():
     #         print(name)
     #         if param.grad is not None:
-    #             # if name == "space_head.space_head.weight": # yes weights are changing
+    #             # if name == "space_final.space_final.weight": # yes weights are changing
     #             print(f"param is {param} and name is {name} and its grad is {torch.round(param.grad.cpu(), decimals=4)}")
 
     exp.log_metrics({"Dev Epoch loss": epoch_loss / train_size}, step=epoch)

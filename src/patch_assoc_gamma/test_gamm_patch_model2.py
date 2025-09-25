@@ -1,5 +1,5 @@
 """
-Goal here is to get the simplest pos embedding of transformers model
+Goal here is to get the simplest pos encodeding of transformers model
 that can learn patch associations in context 
 so that I can derive a DAM energy for it and 1-step SGD update too.
 
